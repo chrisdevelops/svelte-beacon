@@ -103,7 +103,7 @@ describe('API interception', () => {
 		});
 	});
 
-	it('POST /feedback returns 501', async () => {
+	it('POST /feedback returns 400 for invalid body', async () => {
 		const handle = createHook();
 		const event = createBeaconAPIEvent('POST', '/feedback', {
 			body: { description: 'test' },
@@ -113,8 +113,28 @@ describe('API interception', () => {
 		const response = await handle({ event, resolve: tracker.resolve });
 		const body = await response.json();
 
-		expect(response.status).toBe(501);
-		expect(body.error).toContain('not yet implemented');
+		expect(response.status).toBe(400);
+		expect(body.error).toBe('Validation failed');
+		expect(body.fields).toBeDefined();
+	});
+
+	it('POST /feedback returns 201 for valid submission', async () => {
+		const handle = createHook();
+		const event = createBeaconAPIEvent('POST', '/feedback', {
+			body: {
+				type: 'bug',
+				priority: 'medium',
+				description: 'Something is broken',
+			},
+		});
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+		const body = await response.json();
+
+		expect(response.status).toBe(201);
+		expect(body.id).toBeDefined();
+		expect(body.public_id).toBe(1);
 	});
 
 	it('returns 404 for unknown API routes', async () => {

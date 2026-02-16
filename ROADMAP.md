@@ -32,12 +32,12 @@ Most of this is done via the scaffold. Remaining work:
 After this phase: a user can submit feedback through the widget, and
 the task appears in the database.
 
-- [ ] Implement task query functions: `createTask`, `getTask`, `listTasks` — *(beacon-database)*
-- [ ] Implement attachment query functions: `createAttachment` — *(beacon-database)*
-- [ ] Implement `POST /feedback` handler (validate, create task, return 201) — *(beacon-package-architect)*
-- [ ] Implement `GET /tasks` handler (list with pagination) — *(beacon-package-architect)*
-- [ ] Implement `GET /tasks/:id` handler — *(beacon-package-architect)*
-- [ ] Implement `GET /config` handler (return widget feature flags from resolved config) — *(beacon-package-architect)*
+- [x] Implement task query functions: `createTask`, `getTask`, `listTasks` — *(beacon-database)*
+- [x] Implement attachment query functions: `createAttachment` — *(beacon-database)*
+- [x] Implement `POST /feedback` handler (validate, create task, return 201) — *(beacon-package-architect)*
+- [x] Implement `GET /tasks` handler (list with pagination) — *(beacon-package-architect)*
+- [x] Implement `GET /tasks/:id` handler — *(beacon-package-architect)*
+- [x] Implement `GET /config` handler (return widget feature flags from resolved config) — *(beacon-package-architect)*
 - [ ] Build widget internals: FloatingButton, FeedbackForm, TypeSelector, PrioritySelector — *(beacon-widget)*
 - [ ] Build widget shared state (`shared-state.svelte.ts`) — *(beacon-widget)*
 - [ ] Build widget style injection (`styles.ts` + `styles.css`) — *(beacon-widget)*
@@ -46,7 +46,8 @@ the task appears in the database.
 - [ ] Implement form submission flow (validate → fetch → success/error states) — *(beacon-widget)*
 - [ ] Build SuccessMessage and ErrorMessage components — *(beacon-widget)*
 - [ ] Config fetch on mount (`GET /__beacon/api/config`) — *(beacon-widget)*
-- [ ] Write tests: all query functions, feedback handler, widget form behavior — *(beacon-database, beacon-widget)*
+- [x] Write tests: query functions and API handlers — *(beacon-database, beacon-package-architect)*
+- [ ] Write tests: widget form behavior — *(beacon-widget)*
 - [ ] Verify end-to-end: submit feedback via widget, check it exists in DB — *(manual)*
 
 ## Phase 3 — Dashboard Core

@@ -1,12 +1,13 @@
 import type { ResolvedConfig } from '../../src/server/config.js';
+import type { CreateTaskInput } from '../../src/server/types.js';
 
 let idCounter = 0;
 
-export function createTaskData(overrides: Record<string, unknown> = {}) {
+export function createTaskData(overrides: Partial<CreateTaskInput> = {}): CreateTaskInput {
 	idCounter++;
 	return {
-		type: 'bug' as const,
-		priority: 'medium' as const,
+		type: 'bug',
+		priority: 'medium',
 		description: `Test task ${idCounter}`,
 		route: '/test-page',
 		...overrides,
