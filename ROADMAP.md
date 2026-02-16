@@ -17,14 +17,14 @@ database initializes with migrations, and `npx beacon init` works.
 
 Most of this is done via the scaffold. Remaining work:
 
-- [ ] Wire `createDatabase()` into the hook's lazy init (replace TODO in `hook.ts`) — *(beacon-package-architect)*
-- [ ] Verify migrations run on first request against real SQLite file — *(beacon-database)*
-- [ ] Register placeholder API routes (GET /config, GET /tasks, POST /feedback) that return empty responses — *(beacon-package-architect)*
-- [ ] Wire the router's `dispatch()` into `handleAPIRequest()` in the hook — *(beacon-package-architect)*
-- [ ] Dashboard placeholder: serve a static HTML page ("Beacon is running") from the hook for `/__beacon/` — *(beacon-package-architect)*
-- [ ] Write tests: hook passthrough, kill switch, API route interception, error boundary — *(beacon-package-architect)*
-- [ ] Write tests: migrations on empty DB, idempotency, table verification — *(beacon-database)*
-- [ ] Write tests: CLI init (directory creation, gitignore, idempotency) — *(use test patterns from beacon-testing skill)*
+- [x] Wire `createDatabase()` into the hook's lazy init (replace TODO in `hook.ts`) — *(beacon-package-architect)*
+- [x] Verify migrations run on first request against real SQLite file — *(beacon-database)*
+- [x] Register placeholder API routes (GET /config, GET /tasks, POST /feedback) that return empty responses — *(beacon-package-architect)*
+- [x] Wire the router's `dispatch()` into `handleAPIRequest()` in the hook — *(beacon-package-architect)*
+- [x] Dashboard placeholder: serve a static HTML page ("Beacon is running") from the hook for `/__beacon/` — *(beacon-package-architect)*
+- [x] Write tests: hook passthrough, kill switch, API route interception, error boundary — *(beacon-package-architect)*
+- [x] Write tests: migrations on empty DB, idempotency, table verification — *(beacon-database)*
+- [x] Write tests: CLI init (directory creation, gitignore, idempotency) — *(use test patterns from beacon-testing skill)*
 - [ ] Verify end-to-end: install in a test SvelteKit app, run `npx beacon init`, add hook + widget, start dev server, hit `/__beacon/` — *(manual)*
 
 ## Phase 2 — API + Minimal Widget

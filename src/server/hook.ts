@@ -2,6 +2,9 @@ import type { Handle } from '@sveltejs/kit';
 import type { Client } from '@libsql/client';
 import type { BeaconOptions, ResolvedConfig } from './config.js';
 import { resolveConfig } from './config.js';
+import { createDatabase } from './db/client.js';
+import { dispatch } from './router.js';
+import './api/index.js';
 
 const BEACON_PREFIX = '/__beacon';
 const API_PREFIX = '/__beacon/api';
@@ -75,19 +78,7 @@ export function beacon(options: BeaconOptions): Handle {
 }
 
 async function initializeDatabase(config: ResolvedConfig): Promise<Client> {
-	// TODO: Implement with createDatabase from db/client.ts
-	// This will be implemented by the beacon-database agent
-	const { createClient } = await import('@libsql/client');
-
-	const client = createClient({
-		url: config.database,
-		authToken: config.databaseAuthToken,
-	});
-
-	// Run migrations
-	// TODO: await runMigrations(client);
-
-	return client;
+	return createDatabase(config);
 }
 
 async function handleAPIRequest(
@@ -95,26 +86,29 @@ async function handleAPIRequest(
 	db: Client,
 	config: ResolvedConfig,
 ): Promise<Response> {
-	// TODO: Implement API router dispatch
-	// This will be implemented by the beacon-package-architect agent
-	return new Response(
-		JSON.stringify({ error: 'Not implemented' }),
-		{
-			status: 501,
-			headers: { 'Content-Type': 'application/json' },
-		},
-	);
+	return dispatch(event, db, config);
 }
 
 async function handleDashboardRequest(
 	event: Parameters<Handle>[0]['event'],
-	db: Client,
+	_db: Client,
 	config: ResolvedConfig,
 ): Promise<Response> {
-	// TODO: Serve pre-built dashboard files
-	// This will be implemented by the beacon-package-architect agent
-	return new Response('Dashboard not built yet', {
-		status: 503,
-		headers: { 'Content-Type': 'text/plain' },
+	const html = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Beacon Dashboard</title></head>
+<body>
+<h1>Beacon Dashboard</h1>
+<p>Mode: ${config.mode}</p>
+<p>API: /__beacon/api</p>
+</body>
+</html>`;
+
+	return new Response(html, {
+		status: 200,
+		headers: {
+			'Content-Type': 'text/html',
+			'Cache-Control': 'no-cache',
+		},
 	});
 }
