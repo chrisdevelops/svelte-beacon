@@ -1,0 +1,24 @@
+node_modules/
+dist/
+.beacon/
+.svelte-kit/
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+.env.*.local
