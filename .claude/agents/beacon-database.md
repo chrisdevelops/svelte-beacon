@@ -9,7 +9,7 @@ description: >
   migration failures, or data integrity issues. If a task touches any file
   in src/server/db/ or involves schema changes, this agent must be used.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: sonnet
+model: opus
 skills: libsql-migrations, beacon-testing
 ---
 

@@ -10,7 +10,7 @@ description: >
   on mount, style injection, or the submission flow to /__beacon/api/feedback.
   If a task touches any file in src/widget/, this agent must be used.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: sonnet
+model: opus
 skills: shadow-dom-svelte, beacon-testing
 ---
 

@@ -10,7 +10,7 @@ description: >
   pipeline, or data fetching layer. If a task touches any file in
   dashboard/, this agent must be used.
 tools: Read, Write, Edit, Bash, Grep, Glob
-model: sonnet
+model: opus
 skills: beacon-testing
 ---
 
