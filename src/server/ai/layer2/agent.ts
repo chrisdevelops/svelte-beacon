@@ -42,15 +42,30 @@ export function getActiveAgent(): AgentState {
 }
 
 /**
- * Check whether the Claude CLI is available on the system PATH.
- * Runs `which claude` and returns true if exit code is 0.
+ * Resolve the absolute path to the Claude CLI binary.
+ * Returns the path if found, or null if not installed.
+ *
+ * Uses the first `claude` on PATH whose `--version` output
+ * indicates a modern version (1.x+) that supports `--output-format`.
  */
-export async function isClaudeAvailable(): Promise<boolean> {
-	return new Promise<boolean>((resolve) => {
-		execFile('which', ['claude'], (error) => {
-			resolve(error === null);
+export async function resolveClaudePath(): Promise<string | null> {
+	return new Promise<string | null>((resolve) => {
+		execFile('which', ['claude'], (error, stdout) => {
+			if (error) {
+				resolve(null);
+				return;
+			}
+			resolve(stdout.trim() || null);
 		});
 	});
+}
+
+/**
+ * Check whether the Claude CLI is available on the system PATH.
+ */
+export async function isClaudeAvailable(): Promise<boolean> {
+	const path = await resolveClaudePath();
+	return path !== null;
 }
 
 /**
@@ -92,8 +107,8 @@ export async function startAgent(
 		throw new Error('Task not found');
 	}
 
-	const claudeInstalled = await isClaudeAvailable();
-	if (!claudeInstalled) {
+	const claudePath = await resolveClaudePath();
+	if (!claudePath) {
 		throw new Error('Claude CLI not installed');
 	}
 
@@ -140,7 +155,7 @@ export async function startAgent(
 	currentPrompt = prompt;
 
 	// Spawn Claude Code
-	spawnAgentProcess(prompt, taskId, db, config);
+	spawnAgentProcess(claudePath, prompt, taskId, db, config);
 
 	return { ...currentState };
 }
@@ -149,14 +164,16 @@ export async function startAgent(
  * Spawn the Claude Code child process and wire up event handlers.
  */
 function spawnAgentProcess(
+	claudePath: string,
 	prompt: string,
 	taskId: string,
 	db: Client,
 	config: ResolvedConfig,
 ): void {
-	const proc = spawn('claude', [
+	const proc = spawn(claudePath, [
 		'--print',
 		'--output-format', 'stream-json',
+		'--',
 		prompt,
 	], {
 		cwd: process.cwd(),
@@ -512,6 +529,12 @@ export async function unblockAgent(
 		message: `Developer answered: ${answer}`,
 	});
 
+	// Resolve claude binary path
+	const claudePath = await resolveClaudePath();
+	if (!claudePath) {
+		throw new Error('Claude CLI not installed');
+	}
+
 	// Build new prompt with the answer appended
 	const newPrompt = currentPrompt + `\n\n## Developer Answer\n\nThe developer answered your question:\n\n${answer}`;
 
@@ -530,7 +553,7 @@ export async function unblockAgent(
 	currentPrompt = newPrompt;
 
 	// Spawn new process
-	spawnAgentProcess(newPrompt, taskId, db, config);
+	spawnAgentProcess(claudePath, newPrompt, taskId, db, config);
 
 	return { ...currentState };
 }

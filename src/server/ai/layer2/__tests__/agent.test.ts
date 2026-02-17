@@ -53,6 +53,7 @@ import { broadcastToSSEClients } from '../sse.js';
 import {
 	getActiveAgent,
 	isClaudeAvailable,
+	resolveClaudePath,
 	startAgent,
 	stopAgent,
 	unblockAgent,
@@ -240,6 +241,44 @@ describe('getActiveAgent', () => {
 	});
 });
 
+describe('resolveClaudePath', () => {
+	it('returns the path when claude is found', async () => {
+		mockExecFile.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			callback?: ExecFileCallback,
+		) => {
+			const cb = callback;
+			if (cb) {
+				cb(null, '/usr/local/bin/claude\n', '');
+			}
+			return {} as ChildProcess;
+		}) as typeof execFile);
+
+		const result = await resolveClaudePath();
+
+		expect(result).toBe('/usr/local/bin/claude');
+	});
+
+	it('returns null when claude is not found', async () => {
+		mockExecFile.mockImplementation(((
+			_cmd: string,
+			_args: string[],
+			callback?: ExecFileCallback,
+		) => {
+			const cb = callback;
+			if (cb) {
+				cb(new Error('not found'), '', 'claude not found');
+			}
+			return {} as ChildProcess;
+		}) as typeof execFile);
+
+		const result = await resolveClaudePath();
+
+		expect(result).toBeNull();
+	});
+});
+
 describe('isClaudeAvailable', () => {
 	it('returns true when claude is found', async () => {
 		mockExecFile.mockImplementation(((
@@ -356,10 +395,11 @@ describe('startAgent', () => {
 
 		expect(mockSpawn).toHaveBeenCalledOnce();
 		const [cmd, args] = mockSpawn.mock.calls[0]!;
-		expect(cmd).toBe('claude');
+		expect(cmd).toBe('/usr/local/bin/claude');
 		expect(args).toEqual([
 			'--print',
 			'--output-format', 'stream-json',
+			'--',
 			'Test agent prompt',
 		]);
 	});
