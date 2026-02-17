@@ -3,13 +3,15 @@ import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
 
 // --- Mock child_process ---
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+	...(await importOriginal<typeof import('node:child_process')>()),
 	spawn: vi.fn(),
 	execFile: vi.fn(),
 }));
 
 // --- Mock readline ---
-vi.mock('node:readline', () => ({
+vi.mock('node:readline', async (importOriginal) => ({
+	...(await importOriginal<typeof import('node:readline')>()),
 	createInterface: vi.fn(),
 }));
 

@@ -1,11 +1,13 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import type { ChildProcess } from 'node:child_process';
 
-vi.mock('node:child_process', () => ({
+vi.mock('node:child_process', async (importOriginal) => ({
+	...(await importOriginal<typeof import('node:child_process')>()),
 	execFile: vi.fn(),
 }));
 
-vi.mock('node:fs', () => ({
+vi.mock('node:fs', async (importOriginal) => ({
+	...(await importOriginal<typeof import('node:fs')>()),
 	existsSync: vi.fn(),
 }));
 

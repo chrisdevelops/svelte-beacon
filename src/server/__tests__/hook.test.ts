@@ -7,7 +7,8 @@ import {
 } from '../../../test/mocks/request-event.js';
 
 // Mock node:fs/promises so dashboard tests don't need real files on disk.
-vi.mock('node:fs/promises', () => ({
+vi.mock('node:fs/promises', async (importOriginal) => ({
+	...(await importOriginal<typeof import('node:fs/promises')>()),
 	readFile: vi.fn(),
 }));
 

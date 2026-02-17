@@ -8,7 +8,8 @@ import { createTask } from '../../db/queries/tasks.js';
 import { createAttachment } from '../../db/queries/attachments.js';
 
 // Mock fs/promises
-vi.mock('fs/promises', () => ({
+vi.mock('fs/promises', async (importOriginal) => ({
+	...(await importOriginal<typeof import('fs/promises')>()),
 	readFile: vi.fn(),
 }));
 
