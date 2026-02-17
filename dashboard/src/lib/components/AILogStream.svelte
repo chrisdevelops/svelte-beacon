@@ -5,9 +5,11 @@
 	let {
 		taskId,
 		active = false,
+		onactivity,
 	}: {
 		taskId: string;
 		active: boolean;
+		onactivity?: (message: string) => void;
 	} = $props();
 
 	let logs = $state<AILogEntry[]>([]);
@@ -98,6 +100,7 @@
 						(parsed.tool as string) ?? undefined,
 						message,
 					);
+					onactivity?.(message);
 					break;
 				case 'connected':
 					connected = true;

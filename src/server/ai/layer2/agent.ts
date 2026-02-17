@@ -29,6 +29,10 @@ let currentState: AgentState = { ...IDLE_STATE };
 let childProcess: ChildProcess | null = null;
 let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
 let currentPrompt: string = '';
+let lastActivityWriteTime: number = 0;
+
+/** Minimum interval between activity DB writes, in milliseconds. */
+const ACTIVITY_THROTTLE_MS = 2000;
 
 /**
  * Return the current agent state snapshot.
@@ -60,6 +64,7 @@ function resetState(): void {
 	}
 	childProcess = null;
 	currentPrompt = '';
+	lastActivityWriteTime = 0;
 	currentState = { ...IDLE_STATE };
 }
 
@@ -269,11 +274,29 @@ async function handleOutputLine(
 		return;
 	}
 
-	// No marker found — check for ephemeral activity events
+	// No marker found — check for activity events
 	const activity = parseStreamActivity(line);
 	if (activity) {
-		// Activity events are real-time only — broadcast but do NOT persist to DB
+		// Always update lastMessage for API consumers
+		currentState = {
+			...currentState,
+			lastMessage: activity.message,
+		};
+
+		// Always broadcast via SSE (unthrottled)
 		broadcastToSSEClients(taskId, activity);
+
+		// Throttled persistence: max 1 DB write per ACTIVITY_THROTTLE_MS
+		const now = Date.now();
+		if (now - lastActivityWriteTime >= ACTIVITY_THROTTLE_MS) {
+			lastActivityWriteTime = now;
+			await createAILog(db, {
+				task_id: taskId,
+				level: 'activity',
+				message: activity.message,
+				metadata: activity.tool ? { tool: activity.tool } : null,
+			});
+		}
 	}
 }
 

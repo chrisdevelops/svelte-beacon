@@ -237,4 +237,46 @@ describe('AIControls', () => {
 		});
 		expect(container.textContent).toContain('Move task to backlog');
 	});
+
+	it('renders lastActivity text when provided and agent is running', () => {
+		const task = createMockTaskDetail({ status: 'ai_working' });
+		const { container } = render(AIControls, {
+			props: {
+				task,
+				agentStatus: 'running',
+				agentPhase: 'implementing',
+				agentBusy: false,
+				blockedQuestion: null,
+				loading: false,
+				lastActivity: 'Reading src/server/api/tasks.ts',
+				onstart: vi.fn(),
+				onstop: vi.fn(),
+				onunblock: vi.fn(),
+			},
+		});
+		const activityEl = container.querySelector('.last-activity');
+		expect(activityEl).not.toBeNull();
+		expect(activityEl!.textContent).toBe('Reading src/server/api/tasks.ts');
+		expect(activityEl!.getAttribute('title')).toBe('Reading src/server/api/tasks.ts');
+	});
+
+	it('does not render lastActivity when null', () => {
+		const task = createMockTaskDetail({ status: 'ai_working' });
+		const { container } = render(AIControls, {
+			props: {
+				task,
+				agentStatus: 'running',
+				agentPhase: 'implementing',
+				agentBusy: false,
+				blockedQuestion: null,
+				loading: false,
+				lastActivity: null,
+				onstart: vi.fn(),
+				onstop: vi.fn(),
+				onunblock: vi.fn(),
+			},
+		});
+		const activityEl = container.querySelector('.last-activity');
+		expect(activityEl).toBeNull();
+	});
 });

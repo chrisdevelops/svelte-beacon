@@ -247,4 +247,94 @@ describe('AnnotationCanvas', () => {
 			expect(drawCanvas.style.cursor).toBe('text');
 		});
 	});
+
+	// ------------------------------------------------------------------ //
+	// Pointer capture behavior                                             //
+	// ------------------------------------------------------------------ //
+
+	it('does NOT call setPointerCapture for the text tool', async () => {
+		const { container } = renderCanvas();
+
+		// Switch to text tool
+		const textBtn = container.querySelector('.beacon-annotation-tool-btn[aria-label="Text"]') as HTMLButtonElement;
+		textBtn.click();
+		await vi.waitFor(() => {
+			expect(textBtn.getAttribute('aria-checked')).toBe('true');
+		});
+
+		const drawCanvas = container.querySelector('.beacon-annotation-draw-canvas') as HTMLCanvasElement;
+		// jsdom does not define setPointerCapture — add it before spying
+		drawCanvas.setPointerCapture = () => {};
+		const setPointerCaptureSpy = vi.spyOn(drawCanvas, 'setPointerCapture');
+
+		// Simulate pointerdown on the draw canvas
+		const pointerEvent = new PointerEvent('pointerdown', {
+			button: 0,
+			pointerId: 1,
+			clientX: 100,
+			clientY: 100,
+			bubbles: true,
+		});
+		drawCanvas.dispatchEvent(pointerEvent);
+
+		expect(setPointerCaptureSpy).not.toHaveBeenCalled();
+	});
+
+	it('shows text input when clicking canvas with text tool selected', async () => {
+		const { container } = renderCanvas();
+
+		// Switch to text tool
+		const textBtn = container.querySelector('.beacon-annotation-tool-btn[aria-label="Text"]') as HTMLButtonElement;
+		textBtn.click();
+		await vi.waitFor(() => {
+			expect(textBtn.getAttribute('aria-checked')).toBe('true');
+		});
+
+		const drawCanvas = container.querySelector('.beacon-annotation-draw-canvas') as HTMLCanvasElement;
+		drawCanvas.setPointerCapture = () => {};
+
+		// Mock getBoundingClientRect for coordinate normalization
+		vi.spyOn(drawCanvas, 'getBoundingClientRect').mockReturnValue({
+			left: 0, top: 0, right: 1024, bottom: 768, width: 1024, height: 768,
+			x: 0, y: 0, toJSON: () => {},
+		});
+
+		// Simulate pointerdown on the draw canvas
+		const pointerEvent = new PointerEvent('pointerdown', {
+			button: 0,
+			pointerId: 1,
+			clientX: 200,
+			clientY: 150,
+			bubbles: true,
+		});
+		drawCanvas.dispatchEvent(pointerEvent);
+
+		// Text input should appear
+		await vi.waitFor(() => {
+			const textInput = container.querySelector('.beacon-annotation-text-input') as HTMLInputElement;
+			expect(textInput).toBeTruthy();
+		});
+	});
+
+	it('calls setPointerCapture for the brush tool', async () => {
+		const { container } = renderCanvas();
+
+		// Brush is the default tool, no need to switch
+		const drawCanvas = container.querySelector('.beacon-annotation-draw-canvas') as HTMLCanvasElement;
+		// jsdom does not define setPointerCapture — add it before spying
+		drawCanvas.setPointerCapture = () => {};
+		const setPointerCaptureSpy = vi.spyOn(drawCanvas, 'setPointerCapture');
+
+		// Simulate pointerdown on the draw canvas
+		const pointerEvent = new PointerEvent('pointerdown', {
+			button: 0,
+			pointerId: 42,
+			clientX: 100,
+			clientY: 100,
+			bubbles: true,
+		});
+		drawCanvas.dispatchEvent(pointerEvent);
+
+		expect(setPointerCaptureSpy).toHaveBeenCalledWith(42);
+	});
 });

@@ -9,6 +9,7 @@
 		agentBusy = false,
 		blockedQuestion = null,
 		loading = false,
+		lastActivity = null,
 		onstart,
 		onstop,
 		onunblock,
@@ -19,6 +20,7 @@
 		agentBusy: boolean;
 		blockedQuestion: string | null;
 		loading: boolean;
+		lastActivity?: string | null;
 		onstart: () => void;
 		onstop: () => void;
 		onunblock: (answer: string) => void;
@@ -94,6 +96,9 @@
 					<span class="phase-badge">{PHASE_LABELS[agentPhase]}</span>
 				{/if}
 			</div>
+			{#if lastActivity}
+				<div class="last-activity" title={lastActivity}>{lastActivity}</div>
+			{/if}
 			<button
 				class="btn btn-stop"
 				onclick={onstop}
@@ -290,6 +295,16 @@
 		border-radius: 9999px;
 		font-size: 0.75rem;
 		font-weight: 500;
+	}
+
+	.last-activity {
+		font-family: var(--font-mono, monospace);
+		font-size: 0.85em;
+		color: var(--color-text-secondary);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 100%;
 	}
 
 	.spinner {

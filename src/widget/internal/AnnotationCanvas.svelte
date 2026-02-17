@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { createAnnotationState } from './annotation-state.svelte.js';
 	import type { AnnotationState } from './annotation-state.svelte.js';
 	import type { Point } from './annotation-types.js';
@@ -61,10 +61,12 @@
 		}
 	});
 
-	// Focus text input when it appears
+	// Focus text input when it appears — use tick() to ensure the DOM is updated
 	$effect(() => {
 		if (textInput && as.textInputPosition) {
-			textInput.focus();
+			tick().then(() => {
+				textInput?.focus();
+			});
 		}
 	});
 
@@ -80,13 +82,14 @@
 	function handlePointerDown(e: PointerEvent): void {
 		if (e.button !== 0) return;
 		const point = getNormalizedPoint(e);
-		(e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
 
 		switch (as.tool) {
 			case 'brush':
+				(e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
 				as.startBrush(point);
 				break;
 			case 'arrow':
+				(e.currentTarget as HTMLCanvasElement).setPointerCapture(e.pointerId);
 				as.startArrow(point);
 				break;
 			case 'text':

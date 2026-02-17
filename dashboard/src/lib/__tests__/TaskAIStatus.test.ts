@@ -5,19 +5,39 @@ import { createMockTaskDetail, createMockAgentState } from './factories.js';
 
 // Mock EventSource to prevent errors from AILogStream
 class MockEventSource {
+	static instances: MockEventSource[] = [];
 	url: string;
 	onopen: (() => void) | null = null;
 	onerror: (() => void) | null = null;
 	listeners: Record<string, Array<(event: MessageEvent) => void>> = {};
 	readyState = 0;
 
-	constructor(url: string) { this.url = url; }
+	constructor(url: string) {
+		this.url = url;
+		MockEventSource.instances.push(this);
+	}
 	addEventListener(type: string, listener: (event: MessageEvent) => void): void {
 		if (!this.listeners[type]) this.listeners[type] = [];
 		this.listeners[type].push(listener);
 	}
 	removeEventListener(): void { /* noop */ }
 	close(): void { this.readyState = 2; }
+
+	// Test helper: simulate an event
+	simulateEvent(type: string, data: string): void {
+		const event = new MessageEvent(type, { data });
+		for (const listener of this.listeners[type] ?? []) {
+			listener(event);
+		}
+	}
+
+	static reset(): void {
+		MockEventSource.instances = [];
+	}
+
+	static getLatest(): MockEventSource | undefined {
+		return MockEventSource.instances[MockEventSource.instances.length - 1];
+	}
 }
 
 // Mock the api module
@@ -35,6 +55,7 @@ const mockStartAI = vi.mocked(api.startAI);
 const mockGetTask = vi.mocked(api.getTask);
 
 beforeEach(() => {
+	MockEventSource.reset();
 	vi.stubGlobal('EventSource', MockEventSource);
 	vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
 		matches: false,
@@ -145,5 +166,98 @@ describe('TaskAIStatus', () => {
 			expect(mockGetTask).toHaveBeenCalledWith('task-123');
 			expect(onupdated).toHaveBeenCalledWith(updatedTask);
 		});
+	});
+
+	it('passes activity messages from AILogStream to AIControls via lastActivity', async () => {
+		const task = createMockTaskDetail({ status: 'ai_working' });
+		const { container } = render(TaskAIStatus, {
+			props: { task, onupdated: vi.fn() },
+		});
+
+		// Get the EventSource created by AILogStream
+		const es = MockEventSource.getLatest()!;
+		expect(es).not.toBeUndefined();
+
+		// Simulate an activity event through the SSE stream
+		es.simulateEvent('activity', JSON.stringify({ message: 'Writing tests for api module' }));
+
+		// The activity should propagate to AIControls as lastActivity
+		await vi.waitFor(() => {
+			const activityEl = container.querySelector('.last-activity');
+			expect(activityEl).not.toBeNull();
+			expect(activityEl!.textContent).toBe('Writing tests for api module');
+		});
+	});
+
+	it('shows stall warning after 60s without activity', async () => {
+		vi.useFakeTimers();
+
+		const task = createMockTaskDetail({ status: 'ai_working' });
+		const { container } = render(TaskAIStatus, {
+			props: { task, onupdated: vi.fn() },
+		});
+
+		const es = MockEventSource.getLatest()!;
+		expect(es).not.toBeUndefined();
+
+		// Simulate an initial activity event so lastActivityTime is set
+		es.simulateEvent('activity', JSON.stringify({ message: 'Starting work' }));
+
+		// Verify no stall warning initially
+		await vi.waitFor(() => {
+			const activityEl = container.querySelector('.last-activity');
+			expect(activityEl).not.toBeNull();
+		});
+		expect(container.querySelector('.stall-warning')).toBeNull();
+
+		// Advance time past the stall threshold (60s) + check interval (15s)
+		vi.advanceTimersByTime(75_000);
+
+		// The stall detection interval should have fired and set isStalled = true
+		await vi.waitFor(() => {
+			const stallWarning = container.querySelector('.stall-warning');
+			expect(stallWarning).not.toBeNull();
+			expect(stallWarning!.textContent).toContain('No activity for');
+		});
+
+		vi.useRealTimers();
+	});
+
+	it('clears stall warning when new activity arrives', async () => {
+		vi.useFakeTimers();
+
+		const task = createMockTaskDetail({ status: 'ai_working' });
+		const { container } = render(TaskAIStatus, {
+			props: { task, onupdated: vi.fn() },
+		});
+
+		const es = MockEventSource.getLatest()!;
+
+		// Simulate initial activity then wait for stall
+		es.simulateEvent('activity', JSON.stringify({ message: 'Initial work' }));
+
+		// Advance past stall threshold
+		vi.advanceTimersByTime(75_000);
+
+		await vi.waitFor(() => {
+			const stallWarning = container.querySelector('.stall-warning');
+			expect(stallWarning).not.toBeNull();
+		});
+
+		// Now simulate new activity
+		es.simulateEvent('activity', JSON.stringify({ message: 'Resumed work' }));
+
+		// Stall warning should be cleared immediately
+		await vi.waitFor(() => {
+			const stallWarning = container.querySelector('.stall-warning');
+			expect(stallWarning).toBeNull();
+		});
+
+		// And the new activity message should be displayed
+		const activityEl = container.querySelector('.last-activity');
+		expect(activityEl).not.toBeNull();
+		expect(activityEl!.textContent).toBe('Resumed work');
+
+		vi.useRealTimers();
 	});
 });

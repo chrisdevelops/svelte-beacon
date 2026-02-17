@@ -1,5 +1,20 @@
-export function formatDate(iso: string): string {
-	const date = new Date(iso);
+/**
+ * Normalize a SQLite datetime string to a proper ISO 8601 string.
+ * SQLite's `datetime('now')` returns `YYYY-MM-DD HH:MM:SS` (UTC, no timezone
+ * indicator). Passing that to `new Date()` causes most JS engines to parse it
+ * as local time, which produces incorrect relative-time calculations.
+ *
+ * This function replaces the space separator with `T` and appends `Z` to mark
+ * the timestamp as UTC. Strings that already contain `T` (i.e. proper ISO
+ * strings) are returned unchanged.
+ */
+export function parseSQLiteDateTime(raw: string): string {
+	if (raw.includes('T')) return raw;
+	return raw.replace(' ', 'T') + 'Z';
+}
+
+export function formatDate(raw: string): string {
+	const date = new Date(parseSQLiteDateTime(raw));
 	return date.toLocaleDateString('en-US', {
 		month: 'short',
 		day: 'numeric',
@@ -7,7 +22,8 @@ export function formatDate(iso: string): string {
 	});
 }
 
-export function formatRelativeTime(iso: string): string {
+export function formatRelativeTime(raw: string): string {
+	const iso = parseSQLiteDateTime(raw);
 	const now = Date.now();
 	const then = new Date(iso).getTime();
 	const seconds = Math.floor((now - then) / 1000);

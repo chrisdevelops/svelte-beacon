@@ -864,8 +864,8 @@
 
 .beacon-annotation-text-input {
 	position: absolute;
-	background: transparent;
-	border: 1px dashed var(--beacon-border-focus);
+	background: rgba(0, 0, 0, 0.75);
+	border: 2px solid currentColor;
 	border-radius: 2px;
 	padding: 2px 4px;
 	font-family: var(--beacon-font);
@@ -873,6 +873,8 @@
 	outline: none;
 	min-width: 60px;
 	max-width: 80%;
+	z-index: 10;
+	box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .beacon-annotation-text-input::placeholder {

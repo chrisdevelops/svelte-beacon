@@ -136,7 +136,7 @@ export interface AILog {
 
 export interface CreateAILogInput {
 	task_id?: string | null;
-	level: 'info' | 'warn' | 'error' | 'progress' | 'blocked' | 'complete';
+	level: 'info' | 'warn' | 'error' | 'progress' | 'blocked' | 'complete' | 'activity';
 	message: string;
 	metadata?: Record<string, unknown> | null;
 }

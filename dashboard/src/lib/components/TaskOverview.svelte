@@ -3,6 +3,7 @@
 	import { TYPE_LABELS, PRIORITY_LABELS } from '$lib/types.js';
 	import StatusDropdown from './StatusDropdown.svelte';
 	import { formatDate } from '$lib/format.js';
+	import { formatMetadata } from '$lib/metadata.js';
 
 	let {
 		task,
@@ -13,6 +14,8 @@
 		updating?: boolean;
 		onstatuschange: (status: TaskStatus) => void;
 	} = $props();
+
+	let formatted = $derived(task.metadata ? formatMetadata(task.metadata) : null);
 </script>
 
 <div class="overview">
@@ -57,6 +60,53 @@
 		</dl>
 	</section>
 
+	{#if formatted}
+		<section class="section">
+			<h3>Context</h3>
+			<dl class="meta-grid">
+				{#if formatted.url}
+					<dt>URL</dt>
+					<dd class="mono url-value">{formatted.url}</dd>
+				{/if}
+
+				{#if formatted.browser}
+					<dt>Browser</dt>
+					<dd>{formatted.browser}</dd>
+				{/if}
+
+				{#if formatted.os}
+					<dt>OS</dt>
+					<dd>{formatted.os}</dd>
+				{/if}
+
+				{#if formatted.viewport}
+					<dt>Viewport</dt>
+					<dd>{formatted.viewport}</dd>
+				{/if}
+
+				{#if formatted.screen}
+					<dt>Screen</dt>
+					<dd>{formatted.screen}</dd>
+				{/if}
+
+				{#if formatted.language}
+					<dt>Language</dt>
+					<dd>{formatted.language}</dd>
+				{/if}
+
+				{#if formatted.darkMode !== null}
+					<dt>Dark Mode</dt>
+					<dd>{formatted.darkMode ? 'Yes' : 'No'}</dd>
+				{/if}
+
+				{#if formatted.accessibility}
+					<dt>Accessibility</dt>
+					<dd>{formatted.accessibility.join(', ')}</dd>
+				{/if}
+			</dl>
+		</section>
+	{/if}
+
 </div>
 
 <style>
@@ -94,6 +144,10 @@
 	.mono {
 		font-family: var(--font-mono);
 		font-size: 0.8125rem;
+	}
+
+	.url-value {
+		word-break: break-all;
 	}
 
 </style>

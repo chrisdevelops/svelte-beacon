@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { collectMetadata } from '../internal/metadata.js';
+import { collectMetadata, mediaMatches } from '../internal/metadata.js';
 
 function stubMatchMedia(darkMode: boolean): void {
-	vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
-		matches: darkMode,
+	vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+		matches: query === '(prefers-color-scheme: dark)' ? darkMode : false,
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
-	}));
+	})));
 }
 
 beforeEach(() => {
@@ -20,6 +20,17 @@ beforeEach(() => {
 	});
 	Object.defineProperty(navigator, 'userAgent', {
 		value: 'TestAgent/1.0',
+		writable: true,
+		configurable: true,
+	});
+	Object.defineProperty(navigator, 'language', {
+		value: 'en-US',
+		writable: true,
+		configurable: true,
+	});
+	Object.defineProperty(window, 'devicePixelRatio', { value: 2, writable: true, configurable: true });
+	Object.defineProperty(window, 'screen', {
+		value: { width: 1920, height: 1080 },
 		writable: true,
 		configurable: true,
 	});
@@ -38,6 +49,9 @@ describe('collectMetadata', () => {
 		expect(meta).toHaveProperty('userAgent');
 		expect(meta).toHaveProperty('darkMode');
 		expect(meta).toHaveProperty('timestamp');
+		expect(meta).toHaveProperty('screen');
+		expect(meta).toHaveProperty('accessibility');
+		expect(meta).toHaveProperty('language');
 	});
 
 	it('captures current URL', () => {
@@ -70,5 +84,71 @@ describe('collectMetadata', () => {
 		const meta = collectMetadata();
 		expect(() => new Date(meta.timestamp)).not.toThrow();
 		expect(meta.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+	});
+
+	it('includes screen dimensions from window.screen', () => {
+		const meta = collectMetadata();
+		expect(meta.screen.width).toBe(1920);
+		expect(meta.screen.height).toBe(1080);
+	});
+
+	it('includes devicePixelRatio', () => {
+		const meta = collectMetadata();
+		expect(meta.screen.devicePixelRatio).toBe(2);
+	});
+
+	it('includes navigator.language', () => {
+		const meta = collectMetadata();
+		expect(meta.language).toBe('en-US');
+	});
+
+	it('includes accessibility preferences when reduced motion is active', () => {
+		vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
+			matches: query === '(prefers-reduced-motion: reduce)',
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+		})));
+
+		const meta = collectMetadata();
+		expect(meta.accessibility.reducedMotion).toBe(true);
+		expect(meta.accessibility.highContrast).toBe(false);
+		expect(meta.accessibility.forcedColors).toBe(false);
+	});
+
+	it('returns false accessibility defaults when matchMedia is unavailable', () => {
+		vi.stubGlobal('matchMedia', undefined);
+
+		const meta = collectMetadata();
+		expect(meta.accessibility.reducedMotion).toBe(false);
+		expect(meta.accessibility.highContrast).toBe(false);
+		expect(meta.accessibility.forcedColors).toBe(false);
+		expect(meta.darkMode).toBe(false);
+	});
+});
+
+describe('mediaMatches', () => {
+	it('returns true when query matches', () => {
+		vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+			matches: true,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+		}));
+
+		expect(mediaMatches('(prefers-color-scheme: dark)')).toBe(true);
+	});
+
+	it('returns false when query does not match', () => {
+		vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
+			matches: false,
+			addEventListener: vi.fn(),
+			removeEventListener: vi.fn(),
+		}));
+
+		expect(mediaMatches('(prefers-color-scheme: dark)')).toBe(false);
+	});
+
+	it('returns false when matchMedia is unavailable', () => {
+		vi.stubGlobal('matchMedia', undefined);
+		expect(mediaMatches('(prefers-color-scheme: dark)')).toBe(false);
 	});
 });

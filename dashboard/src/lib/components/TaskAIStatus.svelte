@@ -23,6 +23,14 @@
 		blockedQuestion: null,
 	});
 
+	// Activity tracking for stall detection
+	let lastActivity = $state<string | null>(null);
+	let lastActivityTime = $state(0);
+	let isStalled = $state(false);
+
+	const STALL_THRESHOLD_MS = 60_000;
+	const STALL_CHECK_INTERVAL_MS = 15_000;
+
 	// Elapsed time ticker — updates every second when running
 	let elapsedSeconds = $state(0);
 	let elapsedTimer: ReturnType<typeof setInterval> | null = null;
@@ -74,6 +82,40 @@
 			stopElapsedTimer();
 		};
 	});
+
+	// Reset activity state when agent stops running
+	$effect(() => {
+		if (effectiveStatus !== 'running') {
+			lastActivity = null;
+			lastActivityTime = 0;
+			isStalled = false;
+		}
+	});
+
+	// Stall detection: check every 15 seconds whether activity is stale
+	$effect(() => {
+		if (effectiveStatus !== 'running') {
+			return;
+		}
+
+		const interval = setInterval(() => {
+			if (lastActivityTime > 0 && Date.now() - lastActivityTime > STALL_THRESHOLD_MS) {
+				isStalled = true;
+			} else {
+				isStalled = false;
+			}
+		}, STALL_CHECK_INTERVAL_MS);
+
+		return () => {
+			clearInterval(interval);
+		};
+	});
+
+	function handleActivity(message: string): void {
+		lastActivity = message;
+		lastActivityTime = Date.now();
+		isStalled = false;
+	}
 
 	const agentBusy = $derived(
 		agentState.taskId !== null && agentState.taskId !== task.id
@@ -135,6 +177,9 @@
 		<div class="running-banner">
 			<span class="running-indicator"></span>
 			<span class="running-text">AI Working</span>
+			{#if isStalled}
+				<span class="stall-warning">No activity for &gt;60s</span>
+			{/if}
 			<span class="elapsed-time">{formatElapsed(elapsedSeconds)}</span>
 			<button
 				class="stop-button"
@@ -155,6 +200,7 @@
 			{agentBusy}
 			blockedQuestion={agentState.blockedQuestion ?? task.ai_blocked_reason}
 			{loading}
+			{lastActivity}
 			onstart={handleStart}
 			onstop={handleStop}
 			onunblock={handleUnblock}
@@ -162,7 +208,7 @@
 	</section>
 
 	<section class="ai-section">
-		<AILogStream taskId={task.id} active={streamActive} />
+		<AILogStream taskId={task.id} active={streamActive} onactivity={handleActivity} />
 	</section>
 </div>
 
@@ -217,6 +263,12 @@
 		font-size: 0.875rem;
 		font-weight: 500;
 		color: #3b82f6;
+	}
+
+	.stall-warning {
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: #f59e0b;
 	}
 
 	.elapsed-time {
