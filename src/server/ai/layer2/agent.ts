@@ -157,7 +157,6 @@ function spawnAgentProcess(
 	const proc = spawn('claude', [
 		'--print',
 		'--output-format', 'stream-json',
-		'--max-turns', '50',
 		prompt,
 	], {
 		cwd: process.cwd(),

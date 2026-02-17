@@ -360,7 +360,6 @@ describe('startAgent', () => {
 		expect(args).toEqual([
 			'--print',
 			'--output-format', 'stream-json',
-			'--max-turns', '50',
 			'Test agent prompt',
 		]);
 	});
