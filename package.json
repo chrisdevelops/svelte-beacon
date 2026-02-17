@@ -1,6 +1,6 @@
 {
   "name": "svelte-beacon",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Contextual feedback collection and AI-assisted resolution for SvelteKit applications",
   "license": "MIT",
   "type": "module",
