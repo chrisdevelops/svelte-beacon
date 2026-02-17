@@ -343,6 +343,35 @@ describe('PATCH /tasks/:id', () => {
 		expect(activities).toHaveLength(0);
 	});
 
+	it('returns full TaskDetail shape with attachments, activity, and admin_notes', async () => {
+		const task = await createTask(db, createTaskData());
+		const attachment = await createAttachment(db, {
+			task_id: task.id,
+			type: 'screenshot',
+			filename: 'shot.png',
+			path: '/storage/shot.png',
+			mime_type: 'image/png',
+			size_bytes: 100,
+		});
+
+		// Status change to generate activity
+		const event = createBeaconAPIEvent('PATCH', `/tasks/${task.id}`, {
+			body: { status: 'backlog' },
+		});
+
+		const response = await handleUpdateTask(event, db, defaultConfig, { id: task.id });
+		const body = await response.json();
+
+		expect(response.status).toBe(200);
+		expect(body.status).toBe('backlog');
+		expect(body.attachments).toHaveLength(1);
+		expect(body.attachments[0].id).toBe(attachment.id);
+		expect(body.attachments[0].url).toBe(`/__beacon/api/attachments/${attachment.id}`);
+		expect(body.activity).toHaveLength(1);
+		expect(body.activity[0].action).toBe('status_change');
+		expect(body.admin_notes).toEqual([]);
+	});
+
 	it('returns 400 for invalid enum value', async () => {
 		const task = await createTask(db, createTaskData());
 		const event = createBeaconAPIEvent('PATCH', `/tasks/${task.id}`, {

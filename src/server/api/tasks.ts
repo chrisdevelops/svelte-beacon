@@ -169,7 +169,19 @@ export async function handleUpdateTask(
 			});
 		}
 
-		return json(updated);
+		const attachments = await getAttachmentsByTaskId(db, id);
+		const activity = await getActivityByTaskId(db, id);
+		const adminNotes = await getAdminNotesByTaskId(db, id);
+
+		return json({
+			...updated,
+			attachments: attachments.map((a) => ({
+				...a,
+				url: `/__beacon/api/attachments/${a.id}`,
+			})),
+			admin_notes: adminNotes,
+			activity,
+		});
 	} catch (err) {
 		console.error('[beacon] Failed to update task:', err);
 		return json({ error: 'Failed to update task' }, { status: 500 });

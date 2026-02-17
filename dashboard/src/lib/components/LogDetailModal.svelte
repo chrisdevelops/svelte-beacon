@@ -105,6 +105,9 @@
 		background: var(--color-bg, #fff);
 		color: var(--color-text, #1a1a1a);
 		box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
 	}
 
 	.log-modal::backdrop {
