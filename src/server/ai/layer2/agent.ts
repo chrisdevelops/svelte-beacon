@@ -172,6 +172,7 @@ function spawnAgentProcess(
 ): void {
 	const proc = spawn(claudePath, [
 		'--print',
+		'--verbose',
 		'--output-format', 'stream-json',
 		'--',
 		prompt,

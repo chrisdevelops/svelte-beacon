@@ -398,6 +398,7 @@ describe('startAgent', () => {
 		expect(cmd).toBe('/usr/local/bin/claude');
 		expect(args).toEqual([
 			'--print',
+			'--verbose',
 			'--output-format', 'stream-json',
 			'--',
 			'Test agent prompt',
