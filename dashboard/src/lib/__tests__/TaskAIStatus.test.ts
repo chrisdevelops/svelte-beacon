@@ -57,6 +57,10 @@ const mockGetTask = vi.mocked(api.getTask);
 beforeEach(() => {
 	MockEventSource.reset();
 	vi.stubGlobal('EventSource', MockEventSource);
+	vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+		ok: true,
+		json: () => Promise.resolve([]),
+	}));
 	vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({
 		matches: false,
 		addEventListener: vi.fn(),

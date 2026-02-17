@@ -214,15 +214,15 @@ describe('parseStreamActivity — assistant text events', () => {
 		expect(result!.tool).toBeUndefined();
 	});
 
-	it('truncates long text to ~200 chars', () => {
+	it('returns full text without truncation (truncation handled by consumer)', () => {
 		const longText = 'A'.repeat(300);
 		const line = assistantTextEnvelope(longText);
 
 		const result = parseStreamActivity(line);
 
 		expect(result).not.toBeNull();
-		expect(result!.message.length).toBeLessThanOrEqual(203); // 200 + "..."
-		expect(result!.message).toContain('...');
+		expect(result!.message).toBe(longText);
+		expect(result!.message.length).toBe(300);
 	});
 
 	it('returns null for BEACON marker text (handled by parseStreamLine)', () => {

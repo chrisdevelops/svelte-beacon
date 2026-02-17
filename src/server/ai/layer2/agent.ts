@@ -15,7 +15,7 @@ import type { Client } from '@libsql/client';
 import type { ResolvedConfig } from '../../config.js';
 import type { AgentState } from './types.js';
 import { IDLE_STATE } from './types.js';
-import { parseStreamLine, parseStreamActivity } from './output-parser.js';
+import { parseStreamLine, parseStreamActivity, truncateMessage } from './output-parser.js';
 import { buildAgentPrompt } from './prompt-builder.js';
 import { generateProjectContext } from './context-generator.js';
 import { broadcastToSSEClients } from './sse.js';
@@ -173,6 +173,7 @@ function spawnAgentProcess(
 	const proc = spawn(claudePath, [
 		'--print',
 		'--verbose',
+		'--dangerously-skip-permissions',
 		'--output-format', 'stream-json',
 		'--',
 		prompt,
@@ -294,16 +295,20 @@ async function handleOutputLine(
 	// No marker found — check for activity events
 	const activity = parseStreamActivity(line);
 	if (activity) {
-		// Always update lastMessage for API consumers
+		// Truncate for in-memory state and SSE (keep bandwidth low)
+		const displayMessage = truncateMessage(activity.message);
+
+		// Always update lastMessage for API consumers (truncated)
 		currentState = {
 			...currentState,
-			lastMessage: activity.message,
+			lastMessage: displayMessage,
 		};
 
-		// Always broadcast via SSE (unthrottled)
-		broadcastToSSEClients(taskId, activity);
+		// Always broadcast via SSE (unthrottled, truncated)
+		broadcastToSSEClients(taskId, { ...activity, message: displayMessage });
 
 		// Throttled persistence: max 1 DB write per ACTIVITY_THROTTLE_MS
+		// Store full (untruncated) message in DB
 		const now = Date.now();
 		if (now - lastActivityWriteTime >= ACTIVITY_THROTTLE_MS) {
 			lastActivityWriteTime = now;

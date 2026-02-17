@@ -58,6 +58,10 @@ vi.mock('../sse.js', () => ({
 vi.mock('../output-parser.js', () => ({
 	parseStreamLine: vi.fn(),
 	parseStreamActivity: vi.fn(),
+	truncateMessage: vi.fn((text: string, max: number = 200): string => {
+		if (text.length <= max) return text;
+		return text.slice(0, max) + '...';
+	}),
 }));
 
 import { spawn, execFile } from 'node:child_process';

@@ -137,7 +137,7 @@ const MAX_ACTIVITY_LENGTH = 200;
 /**
  * Truncate a string to a maximum length, appending "..." if truncated.
  */
-function truncateMessage(text: string, max: number = MAX_ACTIVITY_LENGTH): string {
+export function truncateMessage(text: string, max: number = MAX_ACTIVITY_LENGTH): string {
 	if (text.length <= max) return text;
 	return text.slice(0, max) + '...';
 }
@@ -185,7 +185,7 @@ function summarizeToolUse(name: string, input: Record<string, unknown>): Activit
 			message = `Using tool: ${name}`;
 	}
 
-	return { type: 'activity', tool: name, message: truncateMessage(message) };
+	return { type: 'activity', tool: name, message };
 }
 
 /**
@@ -239,7 +239,7 @@ export function parseStreamActivity(line: string): ActivityEvent | null {
 			if (typeof text === 'string' && text.trim().length > 0) {
 				// Skip lines that are just BEACON markers — those are handled by parseStreamLine
 				if (MARKER_RE.test(text)) return null;
-				return { type: 'activity', message: truncateMessage(text.trim()) };
+				return { type: 'activity', message: text.trim() };
 			}
 		}
 

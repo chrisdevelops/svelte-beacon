@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { AILogEntry } from '$lib/types.js';
-	import { formatRelativeTime } from '$lib/format.js';
+	import { formatRelativeTime, truncate } from '$lib/format.js';
 
 	let {
 		taskId,
@@ -17,10 +17,12 @@
 	let connected = $state(false);
 	let retryCount = $state(0);
 	let logContainer: HTMLDivElement | undefined = $state();
+	let expandedIds = $state<Set<string>>(new Set());
 
 	const MAX_ACTIVITY_ITEMS = 50;
 	const RETRY_BASE_MS = 1000;
 	const RETRY_MAX_MS = 30_000;
+	const LONG_MESSAGE_THRESHOLD = 200;
 
 	const LEVEL_CLASSES: Record<string, string> = {
 		info: 'level--info',
@@ -30,6 +32,20 @@
 		error: 'level--error',
 		warn: 'level--warn',
 	};
+
+	function isLong(message: string): boolean {
+		return message.length > LONG_MESSAGE_THRESHOLD;
+	}
+
+	function toggleExpand(id: string): void {
+		const next = new Set(expandedIds);
+		if (next.has(id)) {
+			next.delete(id);
+		} else {
+			next.add(id);
+		}
+		expandedIds = next;
+	}
 
 	function scrollToBottom(): void {
 		if (logContainer) {
@@ -42,12 +58,12 @@
 		requestAnimationFrame(scrollToBottom);
 	}
 
-	function addActivity(tool: string | undefined, message: string): void {
+	function addActivity(tool: string | undefined, message: string, timestamp?: string): void {
 		const entry = {
 			id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 			tool,
 			message,
-			timestamp: new Date().toISOString(),
+			timestamp: timestamp ?? new Date().toISOString(),
 		};
 		// Ring buffer: keep only the last MAX_ACTIVITY_ITEMS
 		if (activityMessages.length >= MAX_ACTIVITY_ITEMS) {
@@ -58,14 +74,19 @@
 		requestAnimationFrame(scrollToBottom);
 	}
 
-	function createLogEntry(level: string, message: string, metadata: Record<string, unknown> | null = null): AILogEntry {
+	function createLogEntry(
+		level: string,
+		message: string,
+		metadata: Record<string, unknown> | null = null,
+		timestamp?: string,
+	): AILogEntry {
 		return {
 			id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 			task_id: taskId,
 			level,
 			message,
 			metadata,
-			created_at: new Date().toISOString(),
+			created_at: timestamp ?? new Date().toISOString(),
 		};
 	}
 
@@ -74,6 +95,7 @@
 			const parsed = JSON.parse(data) as Record<string, unknown>;
 			const message = (parsed.message as string) ?? '';
 			const metadata = (parsed.metadata as Record<string, unknown>) ?? null;
+			const timestamp = (parsed.timestamp as string) ?? undefined;
 
 			switch (eventType) {
 				case 'log':
@@ -81,24 +103,26 @@
 						(parsed.level as string) ?? 'info',
 						message,
 						metadata,
+						timestamp,
 					));
 					break;
 				case 'progress':
-					addLog(createLogEntry('progress', message, metadata));
+					addLog(createLogEntry('progress', message, metadata, timestamp));
 					break;
 				case 'blocked':
-					addLog(createLogEntry('blocked', (parsed.reason as string) ?? message, metadata));
+					addLog(createLogEntry('blocked', (parsed.reason as string) ?? message, metadata, timestamp));
 					break;
 				case 'complete':
-					addLog(createLogEntry('complete', message || 'AI execution completed.', metadata));
+					addLog(createLogEntry('complete', message || 'AI execution completed.', metadata, timestamp));
 					break;
 				case 'error':
-					addLog(createLogEntry('error', message || 'An error occurred.', metadata));
+					addLog(createLogEntry('error', message || 'An error occurred.', metadata, timestamp));
 					break;
 				case 'activity':
 					addActivity(
 						(parsed.tool as string) ?? undefined,
 						message,
+						timestamp,
 					);
 					onactivity?.(message);
 					break;
@@ -107,16 +131,34 @@
 					retryCount = 0;
 					break;
 				default:
-					addLog(createLogEntry('info', message, metadata));
+					addLog(createLogEntry('info', message, metadata, timestamp));
 			}
 		} catch {
 			addLog(createLogEntry('info', data));
 		}
 	}
 
+	async function fetchHistoricalLogs(): Promise<void> {
+		try {
+			const res = await fetch(`/__beacon/api/ai/logs/${taskId}`, {
+				headers: { 'Accept': 'application/json' },
+			});
+			if (!res.ok) return;
+			const data = (await res.json()) as AILogEntry[];
+			if (Array.isArray(data) && data.length > 0) {
+				logs = data;
+				requestAnimationFrame(scrollToBottom);
+			}
+		} catch {
+			// Fetch failure is non-fatal
+		}
+	}
+
 	$effect(() => {
 		if (!active) {
 			connected = false;
+			// Fetch historical logs when inactive so users can review past runs
+			fetchHistoricalLogs();
 			return;
 		}
 
@@ -204,7 +246,17 @@
 					<span class="log-level {LEVEL_CLASSES[entry.level] ?? 'level--info'}">
 						{entry.level}
 					</span>
-					<span class="log-message">{entry.message}</span>
+					<span class="log-message">
+						{#if isLong(entry.message) && !expandedIds.has(entry.id)}
+							{truncate(entry.message, LONG_MESSAGE_THRESHOLD)}
+							<button class="expand-toggle" onclick={() => toggleExpand(entry.id)}>show more</button>
+						{:else if isLong(entry.message)}
+							{entry.message}
+							<button class="expand-toggle" onclick={() => toggleExpand(entry.id)}>show less</button>
+						{:else}
+							{entry.message}
+						{/if}
+					</span>
 				</div>
 			{/each}
 			{#if activityMessages.length > 0}
@@ -367,5 +419,22 @@
 	.log-message {
 		word-break: break-word;
 		color: var(--color-text);
+	}
+
+	.expand-toggle {
+		display: inline;
+		background: none;
+		border: none;
+		padding: 0;
+		margin: 0 0 0 0.25rem;
+		font: inherit;
+		font-size: 0.75rem;
+		color: #3b82f6;
+		text-decoration: underline dotted;
+		cursor: pointer;
+	}
+
+	.expand-toggle:hover {
+		color: #2563eb;
 	}
 </style>

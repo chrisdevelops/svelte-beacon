@@ -399,6 +399,7 @@ describe('startAgent', () => {
 		expect(args).toEqual([
 			'--print',
 			'--verbose',
+			'--dangerously-skip-permissions',
 			'--output-format', 'stream-json',
 			'--',
 			'Test agent prompt',
