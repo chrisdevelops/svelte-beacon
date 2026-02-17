@@ -15,7 +15,7 @@ import type { Client } from '@libsql/client';
 import type { ResolvedConfig } from '../../config.js';
 import type { AgentState } from './types.js';
 import { IDLE_STATE } from './types.js';
-import { parseStreamLine } from './output-parser.js';
+import { parseStreamLine, parseStreamActivity } from './output-parser.js';
 import { buildAgentPrompt } from './prompt-builder.js';
 import { generateProjectContext } from './context-generator.js';
 import { broadcastToSSEClients } from './sse.js';
@@ -157,7 +157,7 @@ function spawnAgentProcess(
 	], {
 		cwd: process.cwd(),
 		env: { ...process.env },
-		stdio: ['pipe', 'pipe', 'pipe'],
+		stdio: ['ignore', 'pipe', 'pipe'],
 	});
 
 	childProcess = proc;
@@ -168,7 +168,23 @@ function spawnAgentProcess(
 		rl.on('line', (line: string) => {
 			void handleOutputLine(line, taskId, db);
 		});
+		rl.on('error', () => {
+			// Readline parse failure — non-fatal, continue processing
+		});
 	}
+
+	// Capture stderr — broadcast errors and log to DB
+	if (proc.stderr) {
+		const stderrRl = createInterface({ input: proc.stderr });
+		stderrRl.on('line', (line: string) => {
+			void handleStderrLine(line, taskId, db);
+		});
+	}
+
+	// Handle spawn errors (e.g., binary not found at runtime)
+	proc.on('error', (err: Error) => {
+		void handleSpawnError(err, taskId, db);
+	});
 
 	// Handle process close
 	proc.on('close', (code: number | null) => {
@@ -184,6 +200,7 @@ function spawnAgentProcess(
 /**
  * Process a single line of stdout from the Claude Code process.
  * Parses for structured markers and updates state/DB accordingly.
+ * Also extracts ephemeral activity events for real-time dashboard display.
  */
 async function handleOutputLine(
 	line: string,
@@ -191,63 +208,124 @@ async function handleOutputLine(
 	db: Client,
 ): Promise<void> {
 	const marker = parseStreamLine(line);
-	if (!marker) return;
 
-	// Log every marker to the database
+	if (marker) {
+		// Log every marker to the database
+		await createAILog(db, {
+			task_id: taskId,
+			level: marker.type,
+			message: JSON.stringify(marker),
+			metadata: marker as unknown as Record<string, unknown>,
+		});
+
+		switch (marker.type) {
+			case 'progress': {
+				currentState = {
+					...currentState,
+					phase: marker.phase,
+					lastMessage: marker.message,
+				};
+				broadcastToSSEClients(taskId, marker);
+				break;
+			}
+
+			case 'blocked': {
+				currentState = {
+					...currentState,
+					status: 'blocked',
+					blockedQuestion: marker.question,
+				};
+				await updateTask(db, taskId, { status: 'blocked' });
+				await updateTaskAIFields(db, taskId, { ai_blocked_reason: marker.question });
+				broadcastToSSEClients(taskId, marker);
+				break;
+			}
+
+			case 'complete': {
+				currentState = {
+					...currentState,
+					status: 'completed',
+				};
+				await updateTaskAIFields(db, taskId, {
+					ai_branch: marker.branch,
+					ai_pr_url: marker.prUrl,
+				});
+				await updateTask(db, taskId, { status: 'needs_review' });
+				broadcastToSSEClients(taskId, marker);
+				break;
+			}
+
+			case 'error': {
+				await createAILog(db, {
+					task_id: taskId,
+					level: 'error',
+					message: marker.message,
+				});
+				broadcastToSSEClients(taskId, marker);
+				break;
+			}
+		}
+
+		return;
+	}
+
+	// No marker found — check for ephemeral activity events
+	const activity = parseStreamActivity(line);
+	if (activity) {
+		// Activity events are real-time only — broadcast but do NOT persist to DB
+		broadcastToSSEClients(taskId, activity);
+	}
+}
+
+/**
+ * Process a single line of stderr from the Claude Code process.
+ * Logs to DB and broadcasts as an error event.
+ */
+async function handleStderrLine(
+	line: string,
+	taskId: string,
+	db: Client,
+): Promise<void> {
+	const trimmed = line.trim();
+	if (trimmed === '') return;
+
 	await createAILog(db, {
 		task_id: taskId,
-		level: marker.type,
-		message: JSON.stringify(marker),
-		metadata: marker as unknown as Record<string, unknown>,
+		level: 'error',
+		message: `[stderr] ${trimmed}`,
 	});
 
-	switch (marker.type) {
-		case 'progress': {
-			currentState = {
-				...currentState,
-				phase: marker.phase,
-				lastMessage: marker.message,
-			};
-			broadcastToSSEClients(taskId, marker);
-			break;
-		}
+	broadcastToSSEClients(taskId, {
+		type: 'error',
+		message: `[stderr] ${trimmed}`,
+	});
+}
 
-		case 'blocked': {
-			currentState = {
-				...currentState,
-				status: 'blocked',
-				blockedQuestion: marker.question,
-			};
-			await updateTask(db, taskId, { status: 'blocked' });
-			await updateTaskAIFields(db, taskId, { ai_blocked_reason: marker.question });
-			broadcastToSSEClients(taskId, marker);
-			break;
-		}
+/**
+ * Handle a spawn error (e.g., claude binary not found at runtime).
+ * Logs the error, broadcasts it, and resets state.
+ */
+async function handleSpawnError(
+	err: Error,
+	taskId: string,
+	db: Client,
+): Promise<void> {
+	const errorMessage = `Agent failed to start: ${err.message}`;
 
-		case 'complete': {
-			currentState = {
-				...currentState,
-				status: 'completed',
-			};
-			await updateTaskAIFields(db, taskId, {
-				ai_branch: marker.branch,
-				ai_pr_url: marker.prUrl,
-			});
-			await updateTask(db, taskId, { status: 'needs_review' });
-			broadcastToSSEClients(taskId, marker);
-			break;
-		}
+	await createAILog(db, {
+		task_id: taskId,
+		level: 'error',
+		message: errorMessage,
+	});
 
-		case 'error': {
-			await createAILog(db, {
-				task_id: taskId,
-				level: 'error',
-				message: marker.message,
-			});
-			broadcastToSSEClients(taskId, marker);
-			break;
-		}
-	}
+	broadcastToSSEClients(taskId, {
+		type: 'error',
+		message: errorMessage,
+	});
+
+	await updateTask(db, taskId, { status: 'backlog' });
+
+	resetState();
 }
 
 /**

@@ -51,6 +51,17 @@ export interface ErrorMarker {
 
 export type AgentMarker = ProgressMarker | BlockedMarker | CompleteMarker | ErrorMarker;
 
+// --- Activity events (ephemeral, real-time only — not persisted to DB) ---
+
+export interface ActivityEvent {
+	type: 'activity';
+	tool?: string;
+	message: string;
+}
+
+/** Union of persistent markers and ephemeral activity events. */
+export type AgentEvent = AgentMarker | ActivityEvent;
+
 // --- SSE event types ---
 
 export interface SSEProgressEvent {
@@ -97,12 +108,22 @@ export interface SSELogEvent {
 	};
 }
 
+export interface SSEActivityEvent {
+	event: 'activity';
+	data: {
+		tool?: string;
+		message: string;
+		timestamp: string;
+	};
+}
+
 export type SSEEvent =
 	| SSEProgressEvent
 	| SSEBlockedEvent
 	| SSECompleteEvent
 	| SSEErrorEvent
-	| SSELogEvent;
+	| SSELogEvent
+	| SSEActivityEvent;
 
 // --- Initial state constant ---
 

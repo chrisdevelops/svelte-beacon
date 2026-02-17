@@ -11,12 +11,14 @@
 	} = $props();
 
 	let logs = $state<AILogEntry[]>([]);
+	let activityMessages = $state<Array<{ id: string; tool?: string; message: string; timestamp: string }>>([]);
 	let connected = $state(false);
 	let retryCount = $state(0);
 	let logContainer: HTMLDivElement | undefined = $state();
 
-	const MAX_RETRIES = 5;
-	const RETRY_DELAY_MS = 3000;
+	const MAX_ACTIVITY_ITEMS = 50;
+	const RETRY_BASE_MS = 1000;
+	const RETRY_MAX_MS = 30_000;
 
 	const LEVEL_CLASSES: Record<string, string> = {
 		info: 'level--info',
@@ -35,7 +37,22 @@
 
 	function addLog(entry: AILogEntry): void {
 		logs = [...logs, entry];
-		// Use requestAnimationFrame to scroll after DOM update
+		requestAnimationFrame(scrollToBottom);
+	}
+
+	function addActivity(tool: string | undefined, message: string): void {
+		const entry = {
+			id: `act-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			tool,
+			message,
+			timestamp: new Date().toISOString(),
+		};
+		// Ring buffer: keep only the last MAX_ACTIVITY_ITEMS
+		if (activityMessages.length >= MAX_ACTIVITY_ITEMS) {
+			activityMessages = [...activityMessages.slice(1), entry];
+		} else {
+			activityMessages = [...activityMessages, entry];
+		}
 		requestAnimationFrame(scrollToBottom);
 	}
 
@@ -76,6 +93,12 @@
 				case 'error':
 					addLog(createLogEntry('error', message || 'An error occurred.', metadata));
 					break;
+				case 'activity':
+					addActivity(
+						(parsed.tool as string) ?? undefined,
+						message,
+					);
+					break;
 				case 'connected':
 					connected = true;
 					retryCount = 0;
@@ -108,7 +131,7 @@
 				retryCount = 0;
 			};
 
-			const eventTypes = ['log', 'progress', 'blocked', 'complete', 'error', 'connected'];
+			const eventTypes = ['log', 'progress', 'blocked', 'complete', 'error', 'connected', 'activity'];
 			for (const type of eventTypes) {
 				source.addEventListener(type, (e: MessageEvent) => {
 					handleEvent(type, e.data as string);
@@ -122,11 +145,11 @@
 					source = null;
 				}
 
-				if (localRetryCount < MAX_RETRIES) {
-					localRetryCount++;
-					retryCount = localRetryCount;
-					retryTimeout = setTimeout(connect, RETRY_DELAY_MS);
-				}
+				// Exponential backoff capped at RETRY_MAX_MS — no retry limit
+				localRetryCount++;
+				retryCount = localRetryCount;
+				const delay = Math.min(RETRY_BASE_MS * Math.pow(2, localRetryCount - 1), RETRY_MAX_MS);
+				retryTimeout = setTimeout(connect, delay);
 			};
 		}
 
@@ -153,7 +176,7 @@
 			{#if connected}
 				Connected
 			{:else if retryCount > 0}
-				Reconnecting ({retryCount}/{MAX_RETRIES})...
+				Reconnecting ({retryCount})...
 			{:else if active}
 				Connecting...
 			{:else}
@@ -163,7 +186,7 @@
 	</div>
 
 	<div class="log-container" bind:this={logContainer}>
-		{#if logs.length === 0}
+		{#if logs.length === 0 && activityMessages.length === 0}
 			<div class="log-empty">
 				{#if active}
 					Waiting for log entries...
@@ -181,6 +204,18 @@
 					<span class="log-message">{entry.message}</span>
 				</div>
 			{/each}
+			{#if activityMessages.length > 0}
+				<div class="activity-divider"></div>
+				{#each activityMessages as act (act.id)}
+					<div class="log-entry activity-entry">
+						<time class="log-time">{formatRelativeTime(act.timestamp)}</time>
+						{#if act.tool}
+							<span class="activity-tool">{act.tool}</span>
+						{/if}
+						<span class="log-message activity-message">{act.message}</span>
+					</div>
+				{/each}
+			{/if}
 		{/if}
 	</div>
 </div>
@@ -245,6 +280,36 @@
 
 	.log-entry:hover {
 		background: color-mix(in srgb, var(--color-text) 4%, transparent);
+	}
+
+	.activity-entry {
+		opacity: 0.65;
+		font-size: 0.75rem;
+	}
+
+	.activity-divider {
+		height: 1px;
+		background: var(--color-border);
+		margin: 0.25rem 0;
+		opacity: 0.5;
+	}
+
+	.activity-tool {
+		flex-shrink: 0;
+		display: inline-block;
+		padding: 0.0625rem 0.375rem;
+		border-radius: 3px;
+		font-size: 0.625rem;
+		font-weight: 500;
+		text-transform: uppercase;
+		background: color-mix(in srgb, #8b5cf6 12%, transparent);
+		color: #8b5cf6;
+		min-width: 3rem;
+		text-align: center;
+	}
+
+	.activity-message {
+		color: var(--color-text-secondary);
 	}
 
 	.log-time {

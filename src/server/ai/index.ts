@@ -9,12 +9,14 @@ export { callAnthropicAssist, parseAssistResponse, AnthropicAPIError } from './l
 export type { AssistResponse } from './layer1/client.js';
 
 // Layer 2 exports:
-export { parseStreamLine, extractBeaconMarker } from './layer2/output-parser.js';
+export { parseStreamLine, extractBeaconMarker, parseStreamActivity } from './layer2/output-parser.js';
 export type {
 	AgentPhase,
 	AgentStatus,
 	AgentState,
 	AgentMarker,
+	ActivityEvent,
+	AgentEvent,
 	ProgressMarker,
 	BlockedMarker,
 	CompleteMarker,

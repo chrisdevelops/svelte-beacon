@@ -7,7 +7,7 @@
  * This module does not import from Layer 1.
  */
 
-import type { AgentMarker, AgentPhase } from './types.js';
+import type { AgentMarker, AgentPhase, ActivityEvent } from './types.js';
 
 const VALID_PHASES: ReadonlySet<string> = new Set<AgentPhase>([
 	'starting',
@@ -130,4 +130,122 @@ export function extractBeaconMarker(text: string): AgentMarker | null {
 		default:
 			return null;
 	}
+}
+
+const MAX_ACTIVITY_LENGTH = 200;
+
+/**
+ * Truncate a string to a maximum length, appending "..." if truncated.
+ */
+function truncateMessage(text: string, max: number = MAX_ACTIVITY_LENGTH): string {
+	if (text.length <= max) return text;
+	return text.slice(0, max) + '...';
+}
+
+/**
+ * Summarize a tool_use event into a human-readable activity message.
+ * Returns the tool name and a brief description of what it's doing.
+ */
+function summarizeToolUse(name: string, input: Record<string, unknown>): ActivityEvent {
+	let message: string;
+
+	switch (name) {
+		case 'Read':
+			message = `Reading: ${input['file_path'] ?? 'file'}`;
+			break;
+		case 'Write':
+			message = `Writing: ${input['file_path'] ?? 'file'}`;
+			break;
+		case 'Edit':
+			message = `Editing: ${input['file_path'] ?? 'file'}`;
+			break;
+		case 'Bash': {
+			const cmd = input['command'];
+			message = typeof cmd === 'string'
+				? `Running: ${truncateMessage(cmd, 120)}`
+				: 'Running command';
+			break;
+		}
+		case 'Glob':
+			message = `Searching files: ${input['pattern'] ?? ''}`;
+			break;
+		case 'Grep':
+			message = `Searching code: ${input['pattern'] ?? ''}`;
+			break;
+		case 'Task':
+			message = `Launching agent: ${input['description'] ?? ''}`;
+			break;
+		case 'WebFetch':
+			message = `Fetching: ${input['url'] ?? 'URL'}`;
+			break;
+		case 'WebSearch':
+			message = `Searching web: ${input['query'] ?? ''}`;
+			break;
+		default:
+			message = `Using tool: ${name}`;
+	}
+
+	return { type: 'activity', tool: name, message: truncateMessage(message) };
+}
+
+/**
+ * Parse a single line from Claude Code's stream-json output and extract
+ * human-readable activity for real-time display.
+ *
+ * Unlike `parseStreamLine()` which only extracts [BEACON:*] markers,
+ * this function extracts activity from *all* stream-json event types:
+ * - `assistant` with text → first ~200 chars of text content
+ * - `assistant` with tool_use → tool name + input summary
+ * - `tool_result`, `system`, and other types → skipped (null)
+ *
+ * Activity events are ephemeral (not persisted to DB) and are broadcast
+ * via SSE for real-time dashboard updates only.
+ */
+export function parseStreamActivity(line: string): ActivityEvent | null {
+	const trimmed = line.trim();
+	if (trimmed === '') return null;
+
+	let envelope: Record<string, unknown>;
+	try {
+		envelope = JSON.parse(trimmed) as Record<string, unknown>;
+	} catch {
+		return null;
+	}
+
+	const envelopeType = envelope['type'];
+
+	if (envelopeType === 'assistant') {
+		const message = envelope['message'] as Record<string, unknown> | undefined;
+		if (!message) return null;
+
+		const content = message['content'] as Array<Record<string, unknown>> | undefined;
+		if (!Array.isArray(content) || content.length === 0) return null;
+
+		// Check each content block — tool_use blocks are more useful than text
+		for (const block of content) {
+			if (block['type'] === 'tool_use') {
+				const name = block['name'];
+				const input = block['input'];
+				if (typeof name === 'string' && input && typeof input === 'object') {
+					return summarizeToolUse(name, input as Record<string, unknown>);
+				}
+			}
+		}
+
+		// Fall back to text content if no tool_use blocks
+		const firstBlock = content[0];
+		if (firstBlock && firstBlock['type'] === 'text') {
+			const text = firstBlock['text'];
+			if (typeof text === 'string' && text.trim().length > 0) {
+				// Skip lines that are just BEACON markers — those are handled by parseStreamLine
+				if (MARKER_RE.test(text)) return null;
+				return { type: 'activity', message: truncateMessage(text.trim()) };
+			}
+		}
+
+		return null;
+	}
+
+	// Skip tool_result, system, result, and all other types
+	return null;
 }

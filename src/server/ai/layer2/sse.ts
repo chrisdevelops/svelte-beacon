@@ -11,7 +11,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Client } from '@libsql/client';
 import type { ResolvedConfig } from '../../config.js';
-import type { AgentMarker } from './types.js';
+import type { AgentEvent } from './types.js';
 import { getTask } from '../../db/queries/tasks.js';
 import { getAILogsByTaskId } from '../../db/queries/ai-logs.js';
 
@@ -50,6 +50,7 @@ export function createSSEStream(taskId: string): { response: Response; connectio
 	const stream = new ReadableStream<Uint8Array>({
 		start(controller) {
 			connections.set(connectionId, { taskId, controller });
+			startHeartbeat();
 
 			// Send initial connected event
 			const payload = formatSSE('connected', { taskId });
@@ -57,6 +58,9 @@ export function createSSEStream(taskId: string): { response: Response; connectio
 		},
 		cancel() {
 			connections.delete(connectionId);
+			if (connections.size === 0) {
+				stopHeartbeat();
+			}
 		},
 	});
 
@@ -91,34 +95,42 @@ export function removeSSEConnection(id: string): void {
 }
 
 /**
- * Broadcast an agent marker to all SSE connections for a given task.
+ * Broadcast an agent event to all SSE connections for a given task.
  *
- * Iterates all connections matching the task ID and writes the marker
- * as an SSE event. Connections that throw on write (disconnected
- * clients) are automatically removed.
+ * Accepts both persistent AgentMarker events (progress, blocked, complete, error)
+ * and ephemeral ActivityEvent events. Iterates all connections matching the task
+ * ID and writes the event as an SSE message. Connections that throw on write
+ * (disconnected clients) are automatically removed.
  */
-export function broadcastToSSEClients(taskId: string, marker: AgentMarker): void {
+export function broadcastToSSEClients(taskId: string, event: AgentEvent): void {
 	const timestamp = new Date().toISOString();
 
 	let eventName: string;
 	let data: Record<string, unknown>;
 
-	switch (marker.type) {
+	switch (event.type) {
 		case 'progress':
 			eventName = 'progress';
-			data = { phase: marker.phase, message: marker.message, timestamp };
+			data = { phase: event.phase, message: event.message, timestamp };
 			break;
 		case 'blocked':
 			eventName = 'blocked';
-			data = { question: marker.question, timestamp };
+			data = { question: event.question, timestamp };
 			break;
 		case 'complete':
 			eventName = 'complete';
-			data = { branch: marker.branch, prUrl: marker.prUrl, summary: marker.summary, timestamp };
+			data = { branch: event.branch, prUrl: event.prUrl, summary: event.summary, timestamp };
 			break;
 		case 'error':
 			eventName = 'error';
-			data = { message: marker.message, timestamp };
+			data = { message: event.message, timestamp };
+			break;
+		case 'activity':
+			eventName = 'activity';
+			data = { message: event.message, timestamp };
+			if (event.tool) {
+				data['tool'] = event.tool;
+			}
 			break;
 	}
 
@@ -219,6 +231,53 @@ export async function handleSSEConnection(
 	});
 }
 
+// --- SSE heartbeat keepalive ---
+
+const HEARTBEAT_INTERVAL_MS = 15_000;
+const KEEPALIVE_COMMENT = encoder.encode(': keepalive\n\n');
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+/**
+ * Start the heartbeat timer if not already running.
+ * Sends an SSE comment to all active connections every 15 seconds.
+ * Automatically stops when the last connection is removed.
+ */
+function startHeartbeat(): void {
+	if (heartbeatTimer !== null) return;
+
+	heartbeatTimer = setInterval(() => {
+		if (connections.size === 0) {
+			stopHeartbeat();
+			return;
+		}
+
+		const toRemove: string[] = [];
+
+		for (const [id, conn] of connections) {
+			try {
+				conn.controller.enqueue(KEEPALIVE_COMMENT);
+			} catch {
+				toRemove.push(id);
+			}
+		}
+
+		for (const id of toRemove) {
+			connections.delete(id);
+		}
+	}, HEARTBEAT_INTERVAL_MS);
+}
+
+/**
+ * Stop the heartbeat timer.
+ */
+function stopHeartbeat(): void {
+	if (heartbeatTimer !== null) {
+		clearInterval(heartbeatTimer);
+		heartbeatTimer = null;
+	}
+}
+
 /**
  * Get the number of active connections. Exposed for testing.
  * @internal
@@ -228,7 +287,15 @@ export function _getConnectionCount(): number {
 }
 
 /**
- * Clear all connections. Exposed for testing.
+ * Check if the heartbeat is running. Exposed for testing.
+ * @internal
+ */
+export function _isHeartbeatRunning(): boolean {
+	return heartbeatTimer !== null;
+}
+
+/**
+ * Clear all connections and stop heartbeat. Exposed for testing.
  * @internal
  */
 export function _clearConnectionsForTesting(): void {
@@ -236,4 +303,5 @@ export function _clearConnectionsForTesting(): void {
 		removeSSEConnection(id);
 	}
 	connections.clear();
+	stopHeartbeat();
 }
