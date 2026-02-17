@@ -3,7 +3,7 @@ import type { Client } from '@libsql/client';
 import { createTestDB } from '../../../../test/helpers.js';
 import { createTaskData } from '../../../../test/mocks/factories.js';
 import { createTask } from './tasks.js';
-import { createAttachment, getAttachmentsByTaskId } from './attachments.js';
+import { createAttachment, getAttachment, getAttachmentsByTaskId } from './attachments.js';
 
 describe('attachment queries', () => {
 	let db: Client;
@@ -38,6 +38,32 @@ describe('attachment queries', () => {
 			expect(attachment.mime_type).toBe('image/png');
 			expect(attachment.size_bytes).toBe(4096);
 			expect(attachment.created_at).toBeDefined();
+		});
+	});
+
+	describe('getAttachment', () => {
+		it('returns attachment by ID', async () => {
+			const task = await createTask(db, createTaskData());
+			const created = await createAttachment(db, {
+				task_id: task.id,
+				type: 'screenshot',
+				filename: 'capture.png',
+				path: 'screenshots/capture.png',
+				mime_type: 'image/png',
+				size_bytes: 4096,
+			});
+
+			const attachment = await getAttachment(db, created.id);
+
+			expect(attachment).not.toBeNull();
+			expect(attachment!.id).toBe(created.id);
+			expect(attachment!.filename).toBe('capture.png');
+			expect(attachment!.mime_type).toBe('image/png');
+		});
+
+		it('returns null for non-existent ID', async () => {
+			const attachment = await getAttachment(db, 'non-existent-id');
+			expect(attachment).toBeNull();
 		});
 	});
 

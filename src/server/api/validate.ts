@@ -140,6 +140,22 @@ export function optionalJSON(
 	return { valid: false, error: `${field} must be valid JSON` };
 }
 
+export function validateStatusTransition<T extends string>(
+	currentStatus: T,
+	newStatus: T,
+	validTransitions: Record<T, readonly T[]>,
+): FieldResult<T> {
+	const allowed = validTransitions[currentStatus];
+	if (!allowed || !allowed.includes(newStatus)) {
+		const validList = allowed ? allowed.join(', ') : 'none';
+		return {
+			valid: false,
+			error: `Cannot transition from '${currentStatus}' to '${newStatus}'. Valid transitions: ${validList}`,
+		};
+	}
+	return { valid: true, value: newStatus };
+}
+
 export function collectErrors<T extends CollectInput>(results: T): CollectResult<T> {
 	const errors: Record<string, string> = {};
 	const values: Record<string, unknown> = {};

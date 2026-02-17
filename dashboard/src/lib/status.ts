@@ -1,4 +1,6 @@
-export const STATUS_TRANSITIONS: Record<string, string[]> = {
+import type { TaskStatus } from './types.js';
+
+export const STATUS_TRANSITIONS: Record<TaskStatus, readonly TaskStatus[]> = {
 	new: ['backlog', 'closed'],
 	backlog: ['ai_working', 'closed'],
 	ai_working: ['blocked', 'needs_review', 'backlog'],
@@ -8,7 +10,7 @@ export const STATUS_TRANSITIONS: Record<string, string[]> = {
 	closed: ['backlog'],
 };
 
-export const STATUS_LABELS: Record<string, string> = {
+export const STATUS_LABELS: Record<TaskStatus, string> = {
 	new: 'New',
 	backlog: 'Backlog',
 	ai_working: 'AI Working',
@@ -18,7 +20,7 @@ export const STATUS_LABELS: Record<string, string> = {
 	closed: 'Closed',
 };
 
-export const STATUS_COLORS: Record<string, string> = {
+export const STATUS_COLORS: Record<TaskStatus, string> = {
 	new: '#6366f1',
 	backlog: '#8b5cf6',
 	ai_working: '#f59e0b',
@@ -35,6 +37,6 @@ export const PRIORITY_COLORS: Record<string, string> = {
 	low: '#6b7280',
 };
 
-export function getValidTransitions(currentStatus: string): string[] {
+export function getValidTransitions(currentStatus: TaskStatus): readonly TaskStatus[] {
 	return STATUS_TRANSITIONS[currentStatus] ?? [];
 }

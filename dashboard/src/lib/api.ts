@@ -1,3 +1,5 @@
+import type { TaskDetail, TaskListResponse, TaskUpdateInput, AgentState, AdminNote, BulkUpdateResponse, BulkDeleteResponse } from './types.js';
+
 const BASE = '/__beacon/api';
 
 class APIError extends Error {
@@ -41,42 +43,61 @@ function toQuery(params?: Record<string, string | number | undefined>): string {
 
 export const api = {
 	// Tasks
-	getTasks: (params?: Record<string, string | number | undefined>) =>
-		request<unknown>(`/tasks?${toQuery(params)}`),
-	getTask: (id: string) => request<unknown>(`/tasks/${id}`),
-	updateTask: (id: string, data: Record<string, unknown>) =>
-		request<unknown>(`/tasks/${id}`, {
+	getTasks: (params?: Record<string, string | number | undefined>): Promise<TaskListResponse> =>
+		request<TaskListResponse>(`/tasks?${toQuery(params)}`),
+	getTask: (id: string): Promise<TaskDetail> =>
+		request<TaskDetail>(`/tasks/${id}`),
+	updateTask: (id: string, data: TaskUpdateInput): Promise<TaskDetail> =>
+		request<TaskDetail>(`/tasks/${id}`, {
 			method: 'PATCH',
 			body: JSON.stringify(data),
 		}),
-	deleteTask: (id: string) =>
+	deleteTask: (id: string): Promise<void> =>
 		request<void>(`/tasks/${id}`, { method: 'DELETE' }),
 
 	// Config
 	getConfig: () => request<unknown>('/config'),
 
 	// AI
-	startAI: (taskId: string) =>
-		request<void>(`/ai/start/${taskId}`, { method: 'POST' }),
-	stopAI: (taskId: string) =>
-		request<void>(`/ai/stop/${taskId}`, { method: 'POST' }),
-	unblockAI: (taskId: string, answer: string) =>
-		request<void>(`/ai/unblock/${taskId}`, {
+	startAI: (taskId: string): Promise<AgentState> =>
+		request<AgentState>(`/ai/start/${taskId}`, { method: 'POST' }),
+	stopAI: (taskId: string): Promise<AgentState> =>
+		request<AgentState>(`/ai/stop/${taskId}`, { method: 'POST' }),
+	unblockAI: (taskId: string, answer: string): Promise<AgentState> =>
+		request<AgentState>(`/ai/unblock/${taskId}`, {
 			method: 'POST',
 			body: JSON.stringify({ answer }),
 		}),
 
 	// Notes
-	addNote: (taskId: string, content: string) =>
-		request<unknown>(`/tasks/${taskId}/notes`, {
+	addNote: (taskId: string, content: string): Promise<AdminNote> =>
+		request<AdminNote>(`/tasks/${taskId}/notes`, {
 			method: 'POST',
 			body: JSON.stringify({ content }),
 		}),
 
+	// Bulk actions
+	bulkUpdateStatus: (ids: string[], status: string): Promise<BulkUpdateResponse> =>
+		request<BulkUpdateResponse>('/tasks/bulk-update', {
+			method: 'POST',
+			body: JSON.stringify({ ids, status }),
+		}),
+	bulkDeleteTasks: (ids: string[]): Promise<BulkDeleteResponse> =>
+		request<BulkDeleteResponse>('/tasks/bulk-delete', {
+			method: 'POST',
+			body: JSON.stringify({ ids }),
+		}),
+
 	// Auth
-	requestMagicLink: (email: string) =>
+	requestMagicLink: (email: string): Promise<void> =>
 		request<void>('/auth/magic-link', {
 			method: 'POST',
 			body: JSON.stringify({ email }),
 		}),
+	getSession: (): Promise<{ authenticated: boolean; email?: string; isAdmin?: boolean }> =>
+		request<{ authenticated: boolean; email?: string; isAdmin?: boolean }>('/auth/session'),
+	logout: (): Promise<void> =>
+		request<void>('/auth/logout', { method: 'POST' }),
 };
+
+export { APIError };

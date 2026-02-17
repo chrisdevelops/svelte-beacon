@@ -1,5 +1,8 @@
 import type { Handle } from '@sveltejs/kit';
 import type { Client } from '@libsql/client';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { dirname, join, extname, normalize } from 'node:path';
 import type { BeaconOptions, ResolvedConfig } from './config.js';
 import { resolveConfig } from './config.js';
 import { createDatabase } from './db/client.js';
@@ -8,6 +11,32 @@ import './api/index.js';
 
 const BEACON_PREFIX = '/__beacon';
 const API_PREFIX = '/__beacon/api';
+
+// Resolve the dashboard directory relative to the package root.
+// At runtime this file is at dist/server/hook.js, so go up two levels
+// to reach the package root, then into dist/dashboard/.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DASHBOARD_DIR = join(__dirname, '..', 'dashboard');
+
+const MIME_TYPES: Record<string, string> = {
+	'.html': 'text/html; charset=utf-8',
+	'.js': 'application/javascript; charset=utf-8',
+	'.mjs': 'application/javascript; charset=utf-8',
+	'.css': 'text/css; charset=utf-8',
+	'.json': 'application/json; charset=utf-8',
+	'.svg': 'image/svg+xml',
+	'.png': 'image/png',
+	'.jpg': 'image/jpeg',
+	'.jpeg': 'image/jpeg',
+	'.gif': 'image/gif',
+	'.webp': 'image/webp',
+	'.ico': 'image/x-icon',
+	'.woff': 'font/woff',
+	'.woff2': 'font/woff2',
+	'.ttf': 'font/ttf',
+	'.otf': 'font/otf',
+};
 
 /**
  * Create a SvelteKit handle hook that intercepts /__beacon/* requests.
@@ -92,23 +121,71 @@ async function handleAPIRequest(
 async function handleDashboardRequest(
 	event: Parameters<Handle>[0]['event'],
 	_db: Client,
-	config: ResolvedConfig,
+	_config: ResolvedConfig,
 ): Promise<Response> {
-	const html = `<!DOCTYPE html>
-<html lang="en">
-<head><meta charset="utf-8"><title>Beacon Dashboard</title></head>
-<body>
-<h1>Beacon Dashboard</h1>
-<p>Mode: ${config.mode}</p>
-<p>API: /__beacon/api</p>
-</body>
-</html>`;
+	const { pathname } = event.url;
 
-	return new Response(html, {
-		status: 200,
-		headers: {
-			'Content-Type': 'text/html',
-			'Cache-Control': 'no-cache',
-		},
-	});
+	// Strip the /__beacon prefix to get the internal file path.
+	// /__beacon/            -> /
+	// /__beacon             -> /
+	// /__beacon/_app/x.js   -> /_app/x.js
+	const internalPath = pathname.slice(BEACON_PREFIX.length) || '/';
+
+	// Security: reject any path containing ".." to prevent directory traversal.
+	if (internalPath.includes('..')) {
+		return new Response('Forbidden', { status: 403 });
+	}
+
+	// Determine whether this looks like a static file request (has a file extension).
+	const ext = extname(internalPath);
+
+	// If the path has a file extension, try to serve it as a static file.
+	if (ext) {
+		const filePath = normalize(join(DASHBOARD_DIR, internalPath));
+
+		// Double-check the resolved path is still inside the dashboard directory.
+		if (!filePath.startsWith(DASHBOARD_DIR)) {
+			return new Response('Forbidden', { status: 403 });
+		}
+
+		try {
+			const content = await readFile(filePath);
+			const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+			// Hashed assets (e.g., app-abc123de.js) get immutable caching.
+			// Pattern: a dot followed by 8+ hex characters followed by a dot.
+			const isHashed = /\.[a-f0-9]{8,}\./.test(filePath);
+
+			return new Response(content, {
+				headers: {
+					'Content-Type': contentType,
+					'Content-Length': String(content.byteLength),
+					'Cache-Control': isHashed
+						? 'public, max-age=31536000, immutable'
+						: 'public, max-age=3600',
+				},
+			});
+		} catch {
+			return new Response('Not Found', { status: 404 });
+		}
+	}
+
+	// For paths without extensions (SPA routes like /tasks/14), serve index.html.
+	try {
+		const indexPath = join(DASHBOARD_DIR, 'index.html');
+		const content = await readFile(indexPath);
+
+		return new Response(content, {
+			headers: {
+				'Content-Type': 'text/html; charset=utf-8',
+				'Content-Length': String(content.byteLength),
+				'Cache-Control': 'no-cache',
+			},
+		});
+	} catch {
+		return new Response('Dashboard not found. The package may not have been built correctly.', {
+			status: 500,
+			headers: { 'Content-Type': 'text/plain' },
+		});
+	}
 }

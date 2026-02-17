@@ -1,6 +1,6 @@
-import type { Client, Row } from '@libsql/client';
+import type { Client, InValue, Row } from '@libsql/client';
 import { query, queryOne, execute, safeParseJSON } from '../helpers.js';
-import type { Task, TaskListItem, CreateTaskInput, ListTasksParams, PaginatedTasks } from '../../types.js';
+import type { Task, TaskListItem, CreateTaskInput, UpdateTaskInput, UpdateTaskAIInput, ListTasksParams, PaginatedTasks } from '../../types.js';
 import type { TaskType, Priority, TaskStatus } from '../../constants.js';
 
 /**
@@ -82,6 +82,64 @@ export async function getTask(client: Client, id: string): Promise<Task | null> 
 }
 
 /**
+ * Update a task by its UUID. Only provided fields are updated.
+ * Returns the updated Task, or null if not found.
+ */
+export async function updateTask(client: Client, id: string, data: UpdateTaskInput): Promise<Task | null> {
+	const setClauses: string[] = [];
+	const args: InValue[] = [];
+
+	if (data.status !== undefined) {
+		setClauses.push('status = ?');
+		args.push(data.status);
+	}
+	if (data.type !== undefined) {
+		setClauses.push('type = ?');
+		args.push(data.type);
+	}
+	if (data.priority !== undefined) {
+		setClauses.push('priority = ?');
+		args.push(data.priority);
+	}
+	if (data.description !== undefined) {
+		setClauses.push('description = ?');
+		args.push(data.description);
+	}
+
+	if (setClauses.length === 0) {
+		return getTask(client, id);
+	}
+
+	setClauses.push("updated_at = datetime('now')");
+	args.push(id);
+
+	const { rowsAffected } = await execute(
+		client,
+		`UPDATE tasks SET ${setClauses.join(', ')} WHERE id = ?`,
+		args,
+	);
+
+	if (rowsAffected === 0) {
+		return null;
+	}
+
+	return getTask(client, id);
+}
+
+/**
+ * Delete a task by its UUID.
+ * Returns whether the task was found and deleted.
+ */
+export async function deleteTask(client: Client, id: string): Promise<{ deleted: boolean }> {
+	const { rowsAffected } = await execute(
+		client,
+		'DELETE FROM tasks WHERE id = ?',
+		[id],
+	);
+	return { deleted: rowsAffected > 0 };
+}
+
+/**
  * List tasks with filtering, sorting, and pagination.
  */
 export async function listTasks(client: Client, params: ListTasksParams = {}): Promise<PaginatedTasks> {
@@ -149,4 +207,114 @@ export async function listTasks(client: Client, params: ListTasksParams = {}): P
 			totalPages: Math.ceil(total / limit) || 0,
 		},
 	};
+}
+
+/**
+ * Update AI-specific fields on a task.
+ * Keeps AI state changes separate from user-driven updateTask.
+ * Returns the updated Task, or null if not found.
+ */
+/**
+ * Bulk update the status of multiple tasks.
+ * Each task is individually validated against the transition map.
+ * Tasks that don't exist or have invalid transitions are skipped.
+ */
+export async function bulkUpdateStatus(
+	client: Client,
+	ids: string[],
+	newStatus: TaskStatus,
+	validTransitions: Record<TaskStatus, readonly TaskStatus[]>,
+): Promise<{ updated: string[]; skipped: string[] }> {
+	const updated: string[] = [];
+	const skipped: string[] = [];
+
+	for (const id of ids) {
+		const task = await getTask(client, id);
+		if (!task) {
+			skipped.push(id);
+			continue;
+		}
+
+		const allowed = validTransitions[task.status];
+		if (!allowed || !allowed.includes(newStatus)) {
+			skipped.push(id);
+			continue;
+		}
+
+		await execute(
+			client,
+			"UPDATE tasks SET status = ?, updated_at = datetime('now') WHERE id = ?",
+			[newStatus, id],
+		);
+		updated.push(id);
+	}
+
+	return { updated, skipped };
+}
+
+/**
+ * Bulk delete multiple tasks by their UUIDs.
+ * Uses a single DELETE with IN clause for efficiency.
+ */
+export async function bulkDeleteTasks(
+	client: Client,
+	ids: string[],
+): Promise<{ deleted: number }> {
+	if (ids.length === 0) {
+		return { deleted: 0 };
+	}
+
+	const placeholders = ids.map(() => '?').join(', ');
+	const { rowsAffected } = await execute(
+		client,
+		`DELETE FROM tasks WHERE id IN (${placeholders})`,
+		ids,
+	);
+	return { deleted: rowsAffected };
+}
+
+/**
+ * Update AI-specific fields on a task.
+ * Keeps AI state changes separate from user-driven updateTask.
+ * Returns the updated Task, or null if not found.
+ */
+export async function updateTaskAIFields(
+	client: Client,
+	id: string,
+	data: UpdateTaskAIInput,
+): Promise<Task | null> {
+	const setClauses: string[] = [];
+	const args: InValue[] = [];
+
+	if (data.ai_branch !== undefined) {
+		setClauses.push('ai_branch = ?');
+		args.push(data.ai_branch);
+	}
+	if (data.ai_pr_url !== undefined) {
+		setClauses.push('ai_pr_url = ?');
+		args.push(data.ai_pr_url);
+	}
+	if (data.ai_blocked_reason !== undefined) {
+		setClauses.push('ai_blocked_reason = ?');
+		args.push(data.ai_blocked_reason);
+	}
+
+	if (setClauses.length === 0) {
+		return getTask(client, id);
+	}
+
+	setClauses.push("updated_at = datetime('now')");
+	args.push(id);
+
+	const { rowsAffected } = await execute(
+		client,
+		`UPDATE tasks SET ${setClauses.join(', ')} WHERE id = ?`,
+		args,
+	);
+
+	if (rowsAffected === 0) {
+		return null;
+	}
+
+	return getTask(client, id);
 }

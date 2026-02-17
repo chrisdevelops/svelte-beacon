@@ -8,6 +8,7 @@ import {
 	requiredEmail,
 	optionalJSON,
 	collectErrors,
+	validateStatusTransition,
 } from '../validate.js';
 
 // -- requiredString --
@@ -298,6 +299,42 @@ describe('collectErrors', () => {
 			expect(result.errors['description']).toBe('description is required');
 			expect(result.errors['type']).toBe('type must be one of: bug, feature');
 			expect(result.errors['priority']).toBe('priority must be one of: low, high');
+		}
+	});
+});
+
+// -- validateStatusTransition --
+
+describe('validateStatusTransition', () => {
+	const transitions = {
+		new: ['backlog', 'closed'] as const,
+		backlog: ['ai_working', 'closed'] as const,
+		ai_working: ['blocked', 'needs_review', 'backlog'] as const,
+		blocked: ['ai_working', 'backlog'] as const,
+		needs_review: ['done', 'backlog', 'ai_working'] as const,
+		done: ['closed', 'backlog'] as const,
+		closed: ['backlog'] as const,
+	} as Record<string, readonly string[]>;
+
+	it('returns valid for allowed transition', () => {
+		const result = validateStatusTransition('new', 'backlog', transitions);
+		expect(result).toEqual({ valid: true, value: 'backlog' });
+	});
+
+	it('returns error for disallowed transition', () => {
+		const result = validateStatusTransition('new', 'done', transitions);
+		expect(result.valid).toBe(false);
+		if (!result.valid) {
+			expect(result.error).toContain("Cannot transition from 'new' to 'done'");
+			expect(result.error).toContain('backlog, closed');
+		}
+	});
+
+	it('returns error for same status (not in transitions)', () => {
+		const result = validateStatusTransition('new', 'new', transitions);
+		expect(result.valid).toBe(false);
+		if (!result.valid) {
+			expect(result.error).toContain("Cannot transition from 'new' to 'new'");
 		}
 	});
 });

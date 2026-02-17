@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { mount, unmount } from 'svelte';
+	import { injectStyles } from './internal/styles.js';
+	import { createWidgetState } from './internal/shared-state.svelte.js';
+	import { fetchConfig } from './internal/api.js';
+	import BeaconWidget from './internal/BeaconWidget.svelte';
 
 	interface Props {
 		/** Enable or disable the widget. */
@@ -12,33 +16,40 @@
 	let { enabled = true, position }: Props = $props();
 
 	let hostEl: HTMLDivElement | undefined = $state();
-	let mounted = $state(false);
-	let shadowRoot: ShadowRoot | null = $state(null);
 	let innerComponent: Record<string, unknown> | null = null;
 
 	onMount(() => {
 		if (!enabled || !hostEl) return;
 
-		mounted = true;
-		shadowRoot = hostEl.attachShadow({ mode: 'open' });
+		const shadowRoot = hostEl.attachShadow({ mode: 'open' });
 
-		// TODO: Inject styles via adoptedStyleSheets
-		// TODO: Mount BeaconWidget into shadow root
-		// TODO: Fetch config from /__beacon/api/config
+		// Inject styles into shadow root
+		injectStyles(shadowRoot);
+
+		// Create shared state
+		const state = createWidgetState({ position });
+
+		// Mount BeaconWidget into shadow root
+		const target = document.createElement('div');
+		shadowRoot.appendChild(target);
+		innerComponent = mount(BeaconWidget, { target, props: { ws: state, hostElement: hostEl } });
+
+		// Fetch config (non-blocking — widget renders with defaults immediately)
+		fetchConfig()
+			.then((config) => state.setConfig(config))
+			.catch(() => {
+				// Config fetch failed — continue with defaults
+			});
 
 		return () => {
-			// Cleanup
 			if (innerComponent) {
 				unmount(innerComponent);
 				innerComponent = null;
-			}
-			if (shadowRoot) {
-				shadowRoot.adoptedStyleSheets = [];
 			}
 		};
 	});
 </script>
 
 {#if enabled}
-	<div bind:this={hostEl} data-beacon-host style="display: contents;"></div>
+	<div bind:this={hostEl} data-beacon-host></div>
 {/if}

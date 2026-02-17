@@ -16,6 +16,10 @@ export function json(data: unknown, init?: ResponseInit): Response {
 	});
 }
 
+interface RouteOptions {
+	requireAuth?: boolean;
+}
+
 /**
  * Route definition for the Beacon API.
  */
@@ -23,6 +27,7 @@ interface Route {
 	method: string;
 	pattern: RegExp;
 	paramNames: string[];
+	requireAuth: boolean;
 	handler: (
 		event: RequestEvent,
 		db: Client,
@@ -39,14 +44,14 @@ const routes: Route[] = [];
  * Register an API route.
  *
  * @example
- * route('GET', '/tasks', handleListTasks);
- * route('GET', '/tasks/:id', handleGetTask);
+ * route('GET', '/tasks', handleListTasks, { requireAuth: true });
  * route('POST', '/feedback', handleCreateFeedback);
  */
 export function route(
 	method: string,
 	path: string,
 	handler: Route['handler'],
+	options?: RouteOptions,
 ): void {
 	const paramNames: string[] = [];
 	const patternStr = path.replace(/:(\w+)/g, (_, name: string) => {
@@ -58,6 +63,7 @@ export function route(
 		method,
 		pattern: new RegExp(`^${patternStr}$`),
 		paramNames,
+		requireAuth: options?.requireAuth ?? false,
 		handler,
 	});
 }
@@ -81,6 +87,16 @@ export async function dispatch(
 			if (r.method !== method) {
 				methodMatched = true;
 				continue;
+			}
+
+			// Enforce auth for protected routes
+			if (r.requireAuth) {
+				const { authenticateRequest } = await import('./auth/middleware.js');
+				const auth = await authenticateRequest(event, db, config);
+				if (!auth.authenticated) {
+					return json({ error: 'Unauthorized' }, { status: 401 });
+				}
+				(event.locals as Record<string, unknown>).auth = auth;
 			}
 
 			const params: Record<string, string> = {};

@@ -1,10 +1,34 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { beacon } from '../hook.js';
 import {
 	createMockEvent,
 	createBeaconAPIEvent,
 	createTrackableResolve,
 } from '../../../test/mocks/request-event.js';
+
+// Mock node:fs/promises so dashboard tests don't need real files on disk.
+vi.mock('node:fs/promises', () => ({
+	readFile: vi.fn(),
+}));
+
+import { readFile } from 'node:fs/promises';
+const mockReadFile = vi.mocked(readFile);
+
+// Default mock dashboard HTML served when readFile is called.
+const MOCK_DASHBOARD_HTML = '<!DOCTYPE html><html><body>Beacon Dashboard</body></html>';
+
+beforeEach(() => {
+	mockReadFile.mockReset();
+	// By default, readFile resolves with mock dashboard HTML for any path
+	// ending in index.html, and rejects for all other paths.
+	mockReadFile.mockImplementation(async (filePath) => {
+		const p = String(filePath);
+		if (p.endsWith('index.html')) {
+			return Buffer.from(MOCK_DASHBOARD_HTML);
+		}
+		throw Object.assign(new Error(`ENOENT: no such file or directory, open '${p}'`), { code: 'ENOENT' });
+	});
+});
 
 // Helper: create a handle hook with sensible test defaults
 function createHook(overrides: Record<string, unknown> = {}) {
@@ -165,7 +189,7 @@ describe('API interception', () => {
 // -- Dashboard interception --
 
 describe('dashboard interception', () => {
-	it('returns 200 HTML at /__beacon/', async () => {
+	it('returns 200 HTML at /__beacon/ (serves index.html)', async () => {
 		const handle = createHook();
 		const event = createMockEvent({ path: '/__beacon/' });
 		const tracker = createTrackableResolve();
@@ -173,12 +197,11 @@ describe('dashboard interception', () => {
 		const response = await handle({ event, resolve: tracker.resolve });
 
 		expect(response.status).toBe(200);
-		expect(response.headers.get('Content-Type')).toBe('text/html');
+		expect(response.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
 		expect(response.headers.get('Cache-Control')).toBe('no-cache');
 
 		const html = await response.text();
 		expect(html).toContain('Beacon Dashboard');
-		expect(html).toContain('development');
 	});
 
 	it('returns HTML for dashboard sub-paths (SPA fallback)', async () => {
@@ -189,18 +212,93 @@ describe('dashboard interception', () => {
 		const response = await handle({ event, resolve: tracker.resolve });
 
 		expect(response.status).toBe(200);
-		expect(response.headers.get('Content-Type')).toBe('text/html');
+		expect(response.headers.get('Content-Type')).toBe('text/html; charset=utf-8');
+		expect(response.headers.get('Cache-Control')).toBe('no-cache');
 	});
 
-	it('includes mode in dashboard HTML', async () => {
-		const handle = createHook({ mode: 'deployed' });
+	it('serves static files with correct MIME type', async () => {
+		const mockCss = Buffer.from('body { color: red; }');
+		mockReadFile.mockImplementation(async (filePath) => {
+			const p = String(filePath);
+			if (p.endsWith('.css')) return mockCss;
+			throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+		});
+
+		const handle = createHook();
+		const event = createMockEvent({ path: '/__beacon/_app/style.css' });
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Content-Type')).toBe('text/css; charset=utf-8');
+		expect(response.headers.get('Content-Length')).toBe(String(mockCss.byteLength));
+	});
+
+	it('returns immutable cache headers for hashed assets', async () => {
+		const mockJs = Buffer.from('console.log("app")');
+		mockReadFile.mockImplementation(async (filePath) => {
+			const p = String(filePath);
+			if (p.endsWith('.js')) return mockJs;
+			throw Object.assign(new Error('ENOENT'), { code: 'ENOENT' });
+		});
+
+		const handle = createHook();
+		const event = createMockEvent({ path: '/__beacon/_app/immutable/app.abc12345de.js' });
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get('Cache-Control')).toBe('public, max-age=31536000, immutable');
+	});
+
+	it('returns 404 for missing static files', async () => {
+		mockReadFile.mockRejectedValue(
+			Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
+		);
+
+		const handle = createHook();
+		const event = createMockEvent({ path: '/__beacon/nonexistent.js' });
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+
+		expect(response.status).toBe(404);
+	});
+
+	it('returns 403 for path traversal attempts', async () => {
+		const handle = createHook();
+		// Construct an event where pathname bypasses URL normalization.
+		// Real URL constructors normalize ".." away, but we test the
+		// defense-in-depth check by injecting a pathname directly.
+		const event = createMockEvent({ path: '/__beacon/foo' });
+		// Override the url.pathname to include ".." (simulating a non-standard client)
+		Object.defineProperty(event.url, 'pathname', {
+			value: '/__beacon/../../../etc/passwd.js',
+			writable: false,
+		});
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+
+		expect(response.status).toBe(403);
+	});
+
+	it('returns 500 with message when index.html is missing', async () => {
+		mockReadFile.mockRejectedValue(
+			Object.assign(new Error('ENOENT'), { code: 'ENOENT' }),
+		);
+
+		const handle = createHook();
 		const event = createMockEvent({ path: '/__beacon/' });
 		const tracker = createTrackableResolve();
 
 		const response = await handle({ event, resolve: tracker.resolve });
-		const html = await response.text();
 
-		expect(html).toContain('deployed');
+		expect(response.status).toBe(500);
+		const text = await response.text();
+		expect(text).toContain('Dashboard not found');
 	});
 });
 
@@ -229,6 +327,32 @@ describe('error boundary', () => {
 		// Should not throw
 		const response = await handle({ event, resolve: tracker.resolve });
 		expect(response).toBeInstanceOf(Response);
+	});
+});
+
+// -- Auth enforcement --
+
+describe('auth enforcement', () => {
+	it('returns 401 for protected routes in deployed mode without session', async () => {
+		const handle = createHook({ mode: 'deployed' });
+		const event = createBeaconAPIEvent('GET', '/tasks');
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+
+		expect(response.status).toBe(401);
+		const body = await response.json();
+		expect(body.error).toBe('Unauthorized');
+	});
+
+	it('allows protected routes in dev mode without session', async () => {
+		const handle = createHook({ mode: 'development' });
+		const event = createBeaconAPIEvent('GET', '/tasks');
+		const tracker = createTrackableResolve();
+
+		const response = await handle({ event, resolve: tracker.resolve });
+
+		expect(response.status).toBe(200);
 	});
 });
 

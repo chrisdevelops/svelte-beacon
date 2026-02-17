@@ -3,6 +3,8 @@ import type { ResolvedConfig } from '../config.js';
 import { route, json } from '../router.js';
 import { TASK_TYPES, PRIORITY_LEVELS } from '../constants.js';
 import { createTask } from '../db/queries/tasks.js';
+import { createAttachment } from '../db/queries/attachments.js';
+import { storeFile } from '../storage.js';
 import {
 	requiredString,
 	optionalString,
@@ -15,16 +17,61 @@ import {
 
 type RequestEvent = Parameters<import('@sveltejs/kit').Handle>[0]['event'];
 
+/**
+ * Check if the request is multipart form data.
+ */
+function isMultipart(request: Request): boolean {
+	const contentType = request.headers.get('content-type') ?? '';
+	return contentType.includes('multipart/form-data');
+}
+
+/**
+ * Extract fields from a multipart FormData request.
+ * Returns the body fields as a record, plus optional screenshot File.
+ */
+async function parseMultipart(request: Request): Promise<{
+	body: Record<string, unknown>;
+	screenshot: File | null;
+}> {
+	const formData = await request.formData();
+	const body: Record<string, unknown> = {};
+
+	for (const [key, value] of formData.entries()) {
+		if (key === 'screenshot' && value instanceof File) {
+			continue; // handled separately
+		}
+		body[key] = typeof value === 'string' ? value : null;
+	}
+
+	const screenshot = formData.get('screenshot');
+	return {
+		body,
+		screenshot: screenshot instanceof File ? screenshot : null,
+	};
+}
+
 export async function handleCreateFeedback(
 	event: RequestEvent,
 	db: Client,
 	config: ResolvedConfig,
 ): Promise<Response> {
 	let body: Record<string, unknown>;
-	try {
-		body = (await event.request.json()) as Record<string, unknown>;
-	} catch {
-		return json({ error: 'Invalid JSON body' }, { status: 400 });
+	let screenshot: File | null = null;
+
+	if (isMultipart(event.request)) {
+		try {
+			const parsed = await parseMultipart(event.request);
+			body = parsed.body;
+			screenshot = parsed.screenshot;
+		} catch {
+			return json({ error: 'Invalid form data' }, { status: 400 });
+		}
+	} else {
+		try {
+			body = (await event.request.json()) as Record<string, unknown>;
+		} catch {
+			return json({ error: 'Invalid JSON body' }, { status: 400 });
+		}
 	}
 
 	const emailValidator = config.widget.requireEmail ? requiredEmail : optionalEmail;
@@ -55,6 +102,25 @@ export async function handleCreateFeedback(
 			metadata: values.metadata as string | null,
 			user_email: values.email as string | null,
 		});
+
+		// Store screenshot and create attachment record
+		if (screenshot && screenshot.size > 0) {
+			try {
+				const stored = await storeFile(config, task.id, screenshot);
+				await createAttachment(db, {
+					task_id: task.id,
+					type: 'screenshot',
+					filename: stored.filename,
+					path: stored.path,
+					mime_type: screenshot.type || 'image/png',
+					size_bytes: stored.sizeBytes,
+				});
+			} catch (err) {
+				// Log but don't fail the feedback submission
+				console.error('[beacon] Failed to store screenshot:', err);
+			}
+		}
+
 		return json({ id: task.id, public_id: task.public_id }, { status: 201 });
 	} catch (err) {
 		console.error('[beacon] Failed to create task:', err);

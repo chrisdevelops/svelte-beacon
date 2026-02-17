@@ -48,6 +48,14 @@ export async function createAttachment(client: Client, data: CreateAttachmentInp
 }
 
 /**
+ * Get a single attachment by ID.
+ */
+export async function getAttachment(client: Client, id: string): Promise<Attachment | null> {
+	const row = await queryOne(client, 'SELECT * FROM attachments WHERE id = ?', [id]);
+	return row ? mapAttachment(row) : null;
+}
+
+/**
  * Get all attachments for a given task, ordered by creation time ascending.
  */
 export async function getAttachmentsByTaskId(client: Client, taskId: string): Promise<Attachment[]> {

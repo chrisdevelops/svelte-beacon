@@ -1,9 +1,33 @@
 {
   "name": "svelte-beacon",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Contextual feedback collection and AI-assisted resolution for SvelteKit applications",
   "license": "MIT",
   "type": "module",
+  "author": "Chris Lloyd",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chrislloyd/svelte-beacon.git"
+  },
+  "homepage": "https://github.com/chrislloyd/svelte-beacon#readme",
+  "bugs": {
+    "url": "https://github.com/chrislloyd/svelte-beacon/issues"
+  },
+  "keywords": [
+    "svelte",
+    "sveltekit",
+    "feedback",
+    "widget",
+    "ai",
+    "task-management",
+    "dashboard"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "svelte": "./dist/widget/index.js",
+  "types": "./dist/widget/index.d.ts",
+  "sideEffects": false,
   "exports": {
     ".": {
       "types": "./dist/widget/index.d.ts",
@@ -20,7 +44,10 @@
   },
   "files": [
     "dist/",
-    "cli/"
+    "cli/",
+    "!cli/__tests__/",
+    "!dist/**/__tests__/",
+    "!dist/**/*.test.*"
   ],
   "scripts": {
     "build": "npm run build:server && npm run build:widget && npm run build:dashboard",
@@ -33,11 +60,18 @@
     "test:watch": "vitest",
     "test:e2e": "cd e2e && npx playwright test",
     "lint": "eslint .",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
   },
   "peerDependencies": {
     "@sveltejs/kit": "^2.52.0",
+    "html2canvas": "^1.4.1",
     "svelte": "^5.51.2"
+  },
+  "peerDependenciesMeta": {
+    "html2canvas": {
+      "optional": true
+    }
   },
   "dependencies": {
     "@libsql/client": "^0.17.0"
@@ -49,6 +83,8 @@
     "@testing-library/svelte": "^5.3.1",
     "@types/node": "^25.2.3",
     "eslint": "^10.0.0",
+    "html2canvas": "^1.4.1",
+    "jsdom": "^28.1.0",
     "svelte": "^5.51.2",
     "svelte-check": "^4.4.0",
     "typescript": "^5.9.3",
