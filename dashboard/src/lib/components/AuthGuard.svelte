@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
 	import { api } from '$lib/api.js';
 
 	let { children } = $props();
@@ -7,7 +6,7 @@
 	let checked = $state(false);
 	let authenticated = $state(false);
 
-	onMount(async () => {
+	async function checkAuth(): Promise<void> {
 		try {
 			const session = await api.getSession();
 			authenticated = session.authenticated;
@@ -19,6 +18,10 @@
 		} finally {
 			checked = true;
 		}
+	}
+
+	$effect(() => {
+		checkAuth();
 	});
 </script>
 
