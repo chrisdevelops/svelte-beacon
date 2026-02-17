@@ -40,18 +40,30 @@ class MockEventSource {
 	}
 }
 
-// Mock the api module
-vi.mock('$lib/api.js', () => ({
-	api: {
-		startAI: vi.fn(),
-		stopAI: vi.fn(),
-		unblockAI: vi.fn(),
-		getTask: vi.fn(),
-	},
-}));
+// Mock the api module — include APIError class (defined inline to avoid hoisting issues)
+vi.mock('$lib/api.js', () => {
+	class APIError extends Error {
+		status: number;
+		constructor(status: number, message: string) {
+			super(message);
+			this.name = 'APIError';
+			this.status = status;
+		}
+	}
+	return {
+		api: {
+			startAI: vi.fn(),
+			stopAI: vi.fn(),
+			unblockAI: vi.fn(),
+			getTask: vi.fn(),
+		},
+		APIError,
+	};
+});
 
-import { api } from '$lib/api.js';
+import { api, APIError } from '$lib/api.js';
 const mockStartAI = vi.mocked(api.startAI);
+const mockStopAI = vi.mocked(api.stopAI);
 const mockGetTask = vi.mocked(api.getTask);
 
 beforeEach(() => {
@@ -66,6 +78,9 @@ beforeEach(() => {
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
 	}));
+	// Mock HTMLDialogElement.showModal since jsdom doesn't support it
+	HTMLDialogElement.prototype.showModal = vi.fn();
+	HTMLDialogElement.prototype.close = vi.fn();
 });
 
 afterEach(() => {
@@ -123,8 +138,8 @@ describe('TaskAIStatus', () => {
 		const { container } = render(TaskAIStatus, {
 			props: { task, onupdated: vi.fn() },
 		});
-		// Should render Stop AI button (running state)
-		const stopBtn = container.querySelector('[aria-label="Stop AI"]');
+		// Should render the Stop button in the running banner
+		const stopBtn = container.querySelector('.stop-button');
 		expect(stopBtn).not.toBeNull();
 		// Should NOT render Start AI button
 		const startBtn = container.querySelector('[aria-label="Start AI"]');
@@ -263,5 +278,35 @@ describe('TaskAIStatus', () => {
 		expect(activityEl!.textContent).toBe('Resumed work');
 
 		vi.useRealTimers();
+	});
+
+	it('recovers gracefully when stop returns 409', async () => {
+		const task = createMockTaskDetail({ id: 'task-409', status: 'ai_working' });
+		const refreshedTask = createMockTaskDetail({ id: 'task-409', status: 'backlog' });
+		const onupdated = vi.fn();
+
+		// stopAI throws 409 APIError (agent already gone)
+		mockStopAI.mockRejectedValueOnce(new APIError(409, 'No active agent on this task'));
+		// getTask returns refreshed task
+		mockGetTask.mockResolvedValueOnce(refreshedTask);
+
+		const { container } = render(TaskAIStatus, {
+			props: { task, onupdated },
+		});
+
+		// Click the banner Stop button
+		const stopBtn = container.querySelector('.stop-button') as HTMLButtonElement;
+		expect(stopBtn).not.toBeNull();
+		stopBtn.click();
+
+		// Wait for the recovery to complete
+		await vi.waitFor(() => {
+			// Should NOT show error banner
+			const errorBanner = container.querySelector('[role="alert"]');
+			expect(errorBanner).toBeNull();
+			// Should have re-fetched and called onupdated
+			expect(mockGetTask).toHaveBeenCalledWith('task-409');
+			expect(onupdated).toHaveBeenCalledWith(refreshedTask);
+		});
 	});
 });

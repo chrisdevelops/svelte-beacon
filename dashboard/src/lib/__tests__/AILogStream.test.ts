@@ -82,6 +82,9 @@ beforeEach(() => {
 		addEventListener: vi.fn(),
 		removeEventListener: vi.fn(),
 	}));
+	// Mock HTMLDialogElement.showModal since jsdom doesn't support it
+	HTMLDialogElement.prototype.showModal = vi.fn();
+	HTMLDialogElement.prototype.close = vi.fn();
 });
 
 afterEach(() => {
@@ -251,7 +254,7 @@ describe('AILogStream', () => {
 		expect(timeEl.textContent).toContain('2h ago');
 	});
 
-	it('shows expand toggle for long messages', async () => {
+	it('always truncates long messages in log list', async () => {
 		const longMessage = 'A'.repeat(250);
 
 		const historicalLogs: AILogEntry[] = [
@@ -276,22 +279,100 @@ describe('AILogStream', () => {
 			expect(entries.length).toBe(1);
 		});
 
-		// Should show "show more" button
+		// Should NOT have an expand toggle
 		const toggle = container.querySelector('.expand-toggle');
-		expect(toggle).not.toBeNull();
-		expect(toggle!.textContent).toBe('show more');
+		expect(toggle).toBeNull();
 
 		// The message should be truncated (not showing full 250 chars)
 		const messageEl = container.querySelector('.log-message')!;
 		expect(messageEl.textContent!.length).toBeLessThan(longMessage.length);
 	});
 
-	it('toggles expansion on click', async () => {
-		const longMessage = 'B'.repeat(250);
+	it('opens modal when log entry is clicked', async () => {
+		const historicalLogs: AILogEntry[] = [
+			{
+				id: 'log-modal',
+				task_id: 'task-1',
+				level: 'progress',
+				message: 'Analyzing the codebase structure',
+				metadata: null,
+				created_at: '2026-01-15T10:00:00.000Z',
+			},
+		];
+
+		vi.stubGlobal('fetch', createMockFetch(historicalLogs));
+
+		const { container } = render(AILogStream, {
+			props: { taskId: 'task-1', active: false },
+		});
+
+		await vi.waitFor(() => {
+			const entries = container.querySelectorAll('.log-entry');
+			expect(entries.length).toBe(1);
+		});
+
+		// Click the entry
+		const entry = container.querySelector('.log-entry') as HTMLElement;
+		entry.click();
+
+		// Modal dialog should appear
+		await vi.waitFor(() => {
+			const dialog = document.querySelector('dialog');
+			expect(dialog).not.toBeNull();
+			expect(HTMLDialogElement.prototype.showModal).toHaveBeenCalled();
+		});
+	});
+
+	it('closes modal when close button is clicked', async () => {
+		const historicalLogs: AILogEntry[] = [
+			{
+				id: 'log-close',
+				task_id: 'task-1',
+				level: 'info',
+				message: 'Test message',
+				metadata: null,
+				created_at: '2026-01-15T10:00:00.000Z',
+			},
+		];
+
+		vi.stubGlobal('fetch', createMockFetch(historicalLogs));
+
+		const { container } = render(AILogStream, {
+			props: { taskId: 'task-1', active: false },
+		});
+
+		await vi.waitFor(() => {
+			const entries = container.querySelectorAll('.log-entry');
+			expect(entries.length).toBe(1);
+		});
+
+		// Click entry to open modal
+		const entry = container.querySelector('.log-entry') as HTMLElement;
+		entry.click();
+
+		await vi.waitFor(() => {
+			const dialog = document.querySelector('dialog');
+			expect(dialog).not.toBeNull();
+		});
+
+		// Click close button
+		const closeBtn = document.querySelector('[aria-label="Close"]') as HTMLButtonElement;
+		expect(closeBtn).not.toBeNull();
+		closeBtn.click();
+
+		// Modal should disappear
+		await vi.waitFor(() => {
+			const dialog = document.querySelector('dialog');
+			expect(dialog).toBeNull();
+		});
+	});
+
+	it('modal shows full untruncated message', async () => {
+		const longMessage = 'X'.repeat(300);
 
 		const historicalLogs: AILogEntry[] = [
 			{
-				id: 'log-expand',
+				id: 'log-full',
 				task_id: 'task-1',
 				level: 'info',
 				message: longMessage,
@@ -307,32 +388,22 @@ describe('AILogStream', () => {
 		});
 
 		await vi.waitFor(() => {
-			const toggle = container.querySelector('.expand-toggle');
-			expect(toggle).not.toBeNull();
+			const entries = container.querySelectorAll('.log-entry');
+			expect(entries.length).toBe(1);
 		});
 
-		// Click "show more"
-		const toggle = container.querySelector('.expand-toggle') as HTMLButtonElement;
-		toggle.click();
+		// Click entry to open modal
+		const entry = container.querySelector('.log-entry') as HTMLElement;
+		entry.click();
 
 		await vi.waitFor(() => {
-			const btn = container.querySelector('.expand-toggle');
-			expect(btn).not.toBeNull();
-			expect(btn!.textContent).toBe('show less');
+			const dialog = document.querySelector('dialog');
+			expect(dialog).not.toBeNull();
 		});
 
-		// Full message should now be visible
-		const messageEl = container.querySelector('.log-message')!;
-		expect(messageEl.textContent).toContain(longMessage);
-
-		// Click "show less"
-		const collapseToggle = container.querySelector('.expand-toggle') as HTMLButtonElement;
-		collapseToggle.click();
-
-		await vi.waitFor(() => {
-			const btn = container.querySelector('.expand-toggle');
-			expect(btn).not.toBeNull();
-			expect(btn!.textContent).toBe('show more');
-		});
+		// The <pre> should contain the full untruncated message
+		const pre = document.querySelector('pre');
+		expect(pre).not.toBeNull();
+		expect(pre!.textContent).toBe(longMessage);
 	});
 });

@@ -60,7 +60,7 @@ describe('AIControls', () => {
 		expect(startBtn.textContent).toContain('Agent busy');
 	});
 
-	it('renders Stop AI button when running', () => {
+	it('shows running indicator and phase badge without stop button', () => {
 		const task = createMockTaskDetail({ status: 'ai_working' });
 		const { container } = render(AIControls, {
 			props: {
@@ -75,13 +75,15 @@ describe('AIControls', () => {
 				onunblock: vi.fn(),
 			},
 		});
-		const stopBtn = container.querySelector('[aria-label="Stop AI"]') as HTMLButtonElement;
-		expect(stopBtn).not.toBeNull();
-		expect(stopBtn.textContent).toContain('Stop AI');
+		// Should NOT have a stop button (removed — banner has it)
+		const stopBtn = container.querySelector('[aria-label="Stop AI"]');
+		expect(stopBtn).toBeNull();
 		// Should show phase badge
 		const phaseBadge = container.querySelector('.phase-badge');
 		expect(phaseBadge).not.toBeNull();
 		expect(phaseBadge!.textContent).toContain('Implementing');
+		// Should show running indicator
+		expect(container.textContent).toContain('AI Working');
 	});
 
 	it('renders question and answer textarea when blocked', () => {
@@ -126,27 +128,6 @@ describe('AIControls', () => {
 		const startBtn = container.querySelector('[aria-label="Start AI"]') as HTMLButtonElement;
 		startBtn.click();
 		expect(onstart).toHaveBeenCalled();
-	});
-
-	it('calls onstop when Stop AI button is clicked', () => {
-		const onstop = vi.fn();
-		const task = createMockTaskDetail({ status: 'ai_working' });
-		const { container } = render(AIControls, {
-			props: {
-				task,
-				agentStatus: 'running',
-				agentPhase: null,
-				agentBusy: false,
-				blockedQuestion: null,
-				loading: false,
-				onstart: vi.fn(),
-				onstop,
-				onunblock: vi.fn(),
-			},
-		});
-		const stopBtn = container.querySelector('[aria-label="Stop AI"]') as HTMLButtonElement;
-		stopBtn.click();
-		expect(onstop).toHaveBeenCalled();
 	});
 
 	it('calls onunblock with answer when Resume is clicked', async () => {

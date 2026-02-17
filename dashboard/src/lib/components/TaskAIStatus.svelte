@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { TaskDetail, AgentState, AgentStatus } from '$lib/types.js';
-	import { api } from '$lib/api.js';
+	import { api, APIError } from '$lib/api.js';
 	import AIControls from './AIControls.svelte';
 	import AILogStream from './AILogStream.svelte';
 
@@ -147,7 +147,25 @@
 			const updated = await api.getTask(task.id);
 			onupdated(updated);
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'Failed to stop AI';
+			// 409 means the agent already died — reset to idle and refresh task
+			if (err instanceof APIError && err.status === 409) {
+				agentState = {
+					status: 'idle',
+					taskId: null,
+					phase: null,
+					startedAt: null,
+					lastMessage: null,
+					blockedQuestion: null,
+				};
+				try {
+					const updated = await api.getTask(task.id);
+					onupdated(updated);
+				} catch {
+					// Swallow — the important thing is we cleared stale state
+				}
+			} else {
+				error = err instanceof Error ? err.message : 'Failed to stop AI';
+			}
 		} finally {
 			loading = false;
 		}

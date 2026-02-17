@@ -99,14 +99,6 @@
 			{#if lastActivity}
 				<div class="last-activity" title={lastActivity}>{lastActivity}</div>
 			{/if}
-			<button
-				class="btn btn-stop"
-				onclick={onstop}
-				disabled={loading}
-				aria-label="Stop AI"
-			>
-				{loading ? 'Stopping...' : 'Stop AI'}
-			</button>
 		</div>
 
 	{:else if agentStatus === 'blocked'}
@@ -224,16 +216,6 @@
 
 	.btn-start:hover:not(:disabled) {
 		background: #16a34a;
-	}
-
-	.btn-stop {
-		background: #ef4444;
-		color: white;
-		align-self: flex-start;
-	}
-
-	.btn-stop:hover:not(:disabled) {
-		background: #dc2626;
 	}
 
 	.btn-resume {

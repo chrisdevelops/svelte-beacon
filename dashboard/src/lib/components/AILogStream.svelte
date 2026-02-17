@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { AILogEntry } from '$lib/types.js';
 	import { formatRelativeTime, truncate } from '$lib/format.js';
+	import LogDetailModal from './LogDetailModal.svelte';
 
 	let {
 		taskId,
@@ -17,12 +18,12 @@
 	let connected = $state(false);
 	let retryCount = $state(0);
 	let logContainer: HTMLDivElement | undefined = $state();
-	let expandedIds = $state<Set<string>>(new Set());
+	let selectedEntry = $state<AILogEntry | null>(null);
 
 	const MAX_ACTIVITY_ITEMS = 50;
 	const RETRY_BASE_MS = 1000;
 	const RETRY_MAX_MS = 30_000;
-	const LONG_MESSAGE_THRESHOLD = 200;
+	const MESSAGE_TRUNCATE_LENGTH = 200;
 
 	const LEVEL_CLASSES: Record<string, string> = {
 		info: 'level--info',
@@ -33,18 +34,26 @@
 		warn: 'level--warn',
 	};
 
-	function isLong(message: string): boolean {
-		return message.length > LONG_MESSAGE_THRESHOLD;
+	function activityToLogEntry(act: { id: string; tool?: string; message: string; timestamp: string }): AILogEntry {
+		return {
+			id: act.id,
+			task_id: taskId,
+			level: 'info',
+			message: act.message,
+			metadata: act.tool ? { tool: act.tool } : null,
+			created_at: act.timestamp,
+		};
 	}
 
-	function toggleExpand(id: string): void {
-		const next = new Set(expandedIds);
-		if (next.has(id)) {
-			next.delete(id);
-		} else {
-			next.add(id);
+	function handleEntryClick(entry: AILogEntry): void {
+		selectedEntry = entry;
+	}
+
+	function handleEntryKeydown(e: KeyboardEvent, entry: AILogEntry): void {
+		if (e.key === 'Enter' || e.key === ' ') {
+			e.preventDefault();
+			selectedEntry = entry;
 		}
-		expandedIds = next;
 	}
 
 	function scrollToBottom(): void {
@@ -241,39 +250,45 @@
 			</div>
 		{:else}
 			{#each logs as entry (entry.id)}
-				<div class="log-entry">
+				<div
+					class="log-entry clickable"
+					role="button"
+					tabindex="0"
+					onclick={() => handleEntryClick(entry)}
+					onkeydown={(e) => handleEntryKeydown(e, entry)}
+				>
 					<time class="log-time">{formatRelativeTime(entry.created_at)}</time>
 					<span class="log-level {LEVEL_CLASSES[entry.level] ?? 'level--info'}">
 						{entry.level}
 					</span>
-					<span class="log-message">
-						{#if isLong(entry.message) && !expandedIds.has(entry.id)}
-							{truncate(entry.message, LONG_MESSAGE_THRESHOLD)}
-							<button class="expand-toggle" onclick={() => toggleExpand(entry.id)}>show more</button>
-						{:else if isLong(entry.message)}
-							{entry.message}
-							<button class="expand-toggle" onclick={() => toggleExpand(entry.id)}>show less</button>
-						{:else}
-							{entry.message}
-						{/if}
-					</span>
+					<span class="log-message">{truncate(entry.message, MESSAGE_TRUNCATE_LENGTH)}</span>
 				</div>
 			{/each}
 			{#if activityMessages.length > 0}
 				<div class="activity-divider"></div>
 				{#each activityMessages as act (act.id)}
-					<div class="log-entry activity-entry">
+					<div
+						class="log-entry activity-entry clickable"
+						role="button"
+						tabindex="0"
+						onclick={() => handleEntryClick(activityToLogEntry(act))}
+						onkeydown={(e) => handleEntryKeydown(e, activityToLogEntry(act))}
+					>
 						<time class="log-time">{formatRelativeTime(act.timestamp)}</time>
 						{#if act.tool}
 							<span class="activity-tool">{act.tool}</span>
 						{/if}
-						<span class="log-message activity-message">{act.message}</span>
+						<span class="log-message activity-message">{truncate(act.message, MESSAGE_TRUNCATE_LENGTH)}</span>
 					</div>
 				{/each}
 			{/if}
 		{/if}
 	</div>
 </div>
+
+{#if selectedEntry}
+	<LogDetailModal entry={selectedEntry} onclose={() => { selectedEntry = null; }} />
+{/if}
 
 <style>
 	.log-stream {
@@ -335,6 +350,15 @@
 
 	.log-entry:hover {
 		background: color-mix(in srgb, var(--color-text) 4%, transparent);
+	}
+
+	.log-entry.clickable {
+		cursor: pointer;
+	}
+
+	.log-entry.clickable:focus-visible {
+		outline: 2px solid var(--color-accent, #3b82f6);
+		outline-offset: -2px;
 	}
 
 	.activity-entry {
@@ -419,22 +443,5 @@
 	.log-message {
 		word-break: break-word;
 		color: var(--color-text);
-	}
-
-	.expand-toggle {
-		display: inline;
-		background: none;
-		border: none;
-		padding: 0;
-		margin: 0 0 0 0.25rem;
-		font: inherit;
-		font-size: 0.75rem;
-		color: #3b82f6;
-		text-decoration: underline dotted;
-		cursor: pointer;
-	}
-
-	.expand-toggle:hover {
-		color: #2563eb;
 	}
 </style>
