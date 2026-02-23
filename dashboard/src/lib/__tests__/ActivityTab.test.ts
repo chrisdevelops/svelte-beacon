@@ -1,9 +1,19 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, vi, beforeEach } from 'vitest';
 import { render, cleanup } from '@testing-library/svelte';
 import ActivityTab from '$lib/components/ActivityTab.svelte';
 import { createMockTaskDetail, createMockActivity } from './factories.js';
 
+// Mock auth context — default to admin
+const mockAuthContext = { isAdmin: true };
+vi.mock('$lib/auth-context.js', () => ({
+	getAuthContext: () => mockAuthContext,
+}));
+
 afterEach(cleanup);
+
+beforeEach(() => {
+	mockAuthContext.isAdmin = true;
+});
 
 describe('ActivityTab', () => {
 	it('renders empty state when no activity', () => {
@@ -64,5 +74,65 @@ describe('ActivityTab', () => {
 			props: { task },
 		});
 		expect(container.textContent).not.toContain('No activity recorded yet');
+	});
+
+	describe('AI activity filtering', () => {
+		it('shows AI actor entries for admin users', () => {
+			mockAuthContext.isAdmin = true;
+			const task = createMockTaskDetail({
+				activity: [
+					createMockActivity({ actor: 'ai', action: 'status_change', old_value: 'new', new_value: 'in_progress' }),
+					createMockActivity({ actor: 'user', action: 'created' }),
+				],
+			});
+			const { container } = render(ActivityTab, {
+				props: { task },
+			});
+			expect(container.querySelectorAll('.activity-item')).toHaveLength(2);
+			expect(container.textContent).toContain('ai');
+		});
+
+		it('hides AI actor entries for non-admin users', () => {
+			mockAuthContext.isAdmin = false;
+			const task = createMockTaskDetail({
+				activity: [
+					createMockActivity({ actor: 'ai', action: 'status_change', old_value: 'new', new_value: 'in_progress' }),
+					createMockActivity({ actor: 'user', action: 'created' }),
+				],
+			});
+			const { container } = render(ActivityTab, {
+				props: { task },
+			});
+			expect(container.querySelectorAll('.activity-item')).toHaveLength(1);
+			expect(container.textContent).not.toContain('ai');
+		});
+
+		it('shows empty state when all activity is from AI and user is non-admin', () => {
+			mockAuthContext.isAdmin = false;
+			const task = createMockTaskDetail({
+				activity: [
+					createMockActivity({ actor: 'ai', action: 'status_change', old_value: 'new', new_value: 'in_progress' }),
+				],
+			});
+			const { container } = render(ActivityTab, {
+				props: { task },
+			});
+			expect(container.textContent).toContain('No activity recorded yet');
+		});
+
+		it('preserves system actor entries for non-admin users', () => {
+			mockAuthContext.isAdmin = false;
+			const task = createMockTaskDetail({
+				activity: [
+					createMockActivity({ actor: 'system', action: 'created' }),
+					createMockActivity({ actor: 'ai', action: 'status_change', old_value: 'new', new_value: 'in_progress' }),
+				],
+			});
+			const { container } = render(ActivityTab, {
+				props: { task },
+			});
+			expect(container.querySelectorAll('.activity-item')).toHaveLength(1);
+			expect(container.textContent).toContain('system');
+		});
 	});
 });

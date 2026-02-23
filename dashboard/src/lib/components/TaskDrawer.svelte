@@ -1,12 +1,15 @@
 <script lang="ts">
 	import type { TaskDetail, TaskStatus } from '$lib/types.js';
 	import { api } from '$lib/api.js';
+	import { getAuthContext } from '$lib/auth-context.js';
 	import TaskOverview from './TaskOverview.svelte';
 	import TabBar from './TabBar.svelte';
 	import MediaTab from './MediaTab.svelte';
 	import TaskAIStatus from './TaskAIStatus.svelte';
 	import NotesTab from './NotesTab.svelte';
 	import ActivityTab from './ActivityTab.svelte';
+
+	const auth = getAuthContext();
 
 	let {
 		task,
@@ -27,7 +30,7 @@
 		{ id: 'notes', label: 'Notes', count: task.admin_notes.length || undefined },
 		{ id: 'activity', label: 'Activity', count: task.activity.length || undefined },
 		{ id: 'media', label: 'Media', count: task.attachments.length || undefined },
-		{ id: 'ai', label: 'AI Status' },
+		...(auth.isAdmin ? [{ id: 'ai', label: 'AI Status' }] : []),
 	]);
 
 	async function handleStatusChange(status: TaskStatus): Promise<void> {
@@ -81,7 +84,7 @@
 			<ActivityTab {task} />
 		{:else if activeTab === 'media'}
 			<MediaTab {task} />
-		{:else if activeTab === 'ai'}
+		{:else if activeTab === 'ai' && auth.isAdmin}
 			<TaskAIStatus {task} {onupdated} />
 		{/if}
 	</div>

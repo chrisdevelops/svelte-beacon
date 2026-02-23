@@ -2,20 +2,26 @@
 	import type { TaskDetail, TaskStatus } from '$lib/types.js';
 	import { STATUS_LABELS } from '$lib/status.js';
 	import { formatRelativeTime } from '$lib/format.js';
+	import { getAuthContext } from '$lib/auth-context.js';
 
 	let {
 		task,
 	}: {
 		task: TaskDetail;
 	} = $props();
+
+	const auth = getAuthContext();
+	const visibleActivity = $derived(
+		auth.isAdmin ? task.activity : task.activity.filter((e) => e.actor !== 'ai'),
+	);
 </script>
 
 <div class="activity-tab">
-	{#if task.activity.length === 0}
+	{#if visibleActivity.length === 0}
 		<p class="empty">No activity recorded yet</p>
 	{:else}
 		<ul class="activity-list">
-			{#each task.activity as entry (entry.id)}
+			{#each visibleActivity as entry (entry.id)}
 				<li class="activity-item">
 					<span class="activity-actor">{entry.actor}</span>
 					<span class="activity-action">

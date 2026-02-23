@@ -11,12 +11,19 @@ vi.mock('$lib/api.js', () => ({
 	},
 }));
 
+// Mock auth context — default to admin
+const mockAuthContext = { isAdmin: true };
+vi.mock('$lib/auth-context.js', () => ({
+	getAuthContext: () => mockAuthContext,
+}));
+
 afterEach(cleanup);
 
 describe('TaskDrawer', () => {
 	let task: TaskDetail;
 
 	beforeEach(() => {
+		mockAuthContext.isAdmin = true;
 		task = createMockTaskDetail({
 			public_id: 42,
 			description: 'Fix the login bug',
@@ -97,5 +104,23 @@ describe('TaskDrawer', () => {
 			props: { task: taskWithActivity, onclose: vi.fn(), onupdated: vi.fn() },
 		});
 		expect(container.textContent).toContain('Activity');
+	});
+
+	describe('AI Status tab visibility', () => {
+		it('shows AI Status tab for admin users', () => {
+			mockAuthContext.isAdmin = true;
+			const { container } = render(TaskDrawer, {
+				props: { task, onclose: vi.fn(), onupdated: vi.fn() },
+			});
+			expect(container.textContent).toContain('AI Status');
+		});
+
+		it('hides AI Status tab for non-admin users', () => {
+			mockAuthContext.isAdmin = false;
+			const { container } = render(TaskDrawer, {
+				props: { task, onclose: vi.fn(), onupdated: vi.fn() },
+			});
+			expect(container.textContent).not.toContain('AI Status');
+		});
 	});
 });

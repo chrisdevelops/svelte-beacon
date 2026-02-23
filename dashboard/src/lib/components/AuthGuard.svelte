@@ -1,15 +1,24 @@
 <script lang="ts">
 	import { api } from '$lib/api.js';
+	import { setAuthContext } from '$lib/auth-context.js';
 
 	let { children } = $props();
 
 	let checked = $state(false);
 	let authenticated = $state(false);
+	let isAdmin = $state(false);
+
+	setAuthContext({
+		get isAdmin() {
+			return isAdmin;
+		},
+	});
 
 	async function checkAuth(): Promise<void> {
 		try {
 			const session = await api.getSession();
 			authenticated = session.authenticated;
+			isAdmin = session.isAdmin ?? false;
 			if (!session.authenticated) {
 				window.location.href = '/__beacon/login';
 			}

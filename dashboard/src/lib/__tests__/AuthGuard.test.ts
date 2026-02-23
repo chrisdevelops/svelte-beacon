@@ -8,6 +8,11 @@ vi.mock('$lib/api.js', () => ({
 	},
 }));
 
+const mockSetAuthContext = vi.fn();
+vi.mock('$lib/auth-context.js', () => ({
+	setAuthContext: (...args: unknown[]) => mockSetAuthContext(...args),
+}));
+
 import { api } from '$lib/api.js';
 const mockGetSession = vi.mocked(api.getSession);
 
@@ -20,6 +25,7 @@ Object.defineProperty(window, 'location', {
 afterEach(() => {
 	cleanup();
 	vi.restoreAllMocks();
+	mockSetAuthContext.mockClear();
 	window.location.href = '';
 });
 
@@ -67,6 +73,46 @@ describe('AuthGuard', () => {
 
 		await waitFor(() => {
 			expect(window.location.href).toBe('/__beacon/login');
+		});
+	});
+
+	it('calls setAuthContext on init', () => {
+		mockGetSession.mockImplementation(() => new Promise(() => {}));
+
+		render(AuthGuard);
+
+		expect(mockSetAuthContext).toHaveBeenCalledOnce();
+		expect(mockSetAuthContext).toHaveBeenCalledWith(
+			expect.objectContaining({ isAdmin: false }),
+		);
+	});
+
+	it('captures isAdmin true from session', async () => {
+		mockGetSession.mockResolvedValueOnce({
+			authenticated: true,
+			email: 'admin@example.com',
+			isAdmin: true,
+		});
+
+		render(AuthGuard);
+
+		await waitFor(() => {
+			const ctx = mockSetAuthContext.mock.calls[0][0];
+			expect(ctx.isAdmin).toBe(true);
+		});
+	});
+
+	it('defaults isAdmin to false when not in session', async () => {
+		mockGetSession.mockResolvedValueOnce({
+			authenticated: true,
+			email: 'user@example.com',
+		});
+
+		render(AuthGuard);
+
+		await waitFor(() => {
+			const ctx = mockSetAuthContext.mock.calls[0][0];
+			expect(ctx.isAdmin).toBe(false);
 		});
 	});
 });
