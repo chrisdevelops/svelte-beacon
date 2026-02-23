@@ -137,7 +137,6 @@
 /* ------------------------------------------------------------------ */
 
 .beacon-panel {
-	pointer-events: auto;
 	position: fixed;
 	width: 380px;
 	max-width: calc(100vw - 40px);
@@ -152,13 +151,16 @@
 	opacity: 0;
 	transform: translateY(16px) scale(0.95);
 	pointer-events: none;
-	transition: opacity var(--beacon-transition), transform var(--beacon-transition);
+	visibility: hidden;
+	transition: opacity var(--beacon-transition), transform var(--beacon-transition), visibility 0s var(--beacon-transition);
 }
 
 .beacon-panel.beacon-panel--open {
 	opacity: 1;
 	transform: translateY(0) scale(1);
 	pointer-events: auto;
+	visibility: visible;
+	transition: opacity var(--beacon-transition), transform var(--beacon-transition), visibility 0s;
 }
 
 /* Panel position variants */
