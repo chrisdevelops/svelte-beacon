@@ -365,4 +365,109 @@ describe('createWidgetState', () => {
 		expect(state.description).toBe('original');
 		expect(state.type).toBe('bug');
 	});
+
+	// Config prop overrides
+	describe('config prop overrides', () => {
+		it('screenshot override takes precedence over server config', () => {
+			const state = createWidgetState({ screenshot: true });
+			expect(state.config.screenshot).toBe(true);
+			flushSync(() =>
+				state.setConfig({
+					screenshot: false,
+					elementSelector: false,
+					aiAssist: false,
+					requireEmail: false,
+					position: 'bottom-right',
+				}),
+			);
+			expect(state.config.screenshot).toBe(true);
+		});
+
+		it('elementSelector override takes precedence over server config', () => {
+			const state = createWidgetState({ elementSelector: true });
+			flushSync(() =>
+				state.setConfig({
+					screenshot: false,
+					elementSelector: false,
+					aiAssist: false,
+					requireEmail: false,
+					position: 'bottom-right',
+				}),
+			);
+			expect(state.config.elementSelector).toBe(true);
+		});
+
+		it('aiAssist override takes precedence over server config', () => {
+			const state = createWidgetState({ aiAssist: true });
+			flushSync(() =>
+				state.setConfig({
+					screenshot: false,
+					elementSelector: false,
+					aiAssist: false,
+					requireEmail: false,
+					position: 'bottom-right',
+				}),
+			);
+			expect(state.config.aiAssist).toBe(true);
+		});
+
+		it('requireEmail override takes precedence over server config', () => {
+			const state = createWidgetState({ requireEmail: true });
+			flushSync(() =>
+				state.setConfig({
+					screenshot: false,
+					elementSelector: false,
+					aiAssist: false,
+					requireEmail: false,
+					position: 'bottom-right',
+				}),
+			);
+			expect(state.config.requireEmail).toBe(true);
+		});
+
+		it('multiple overrides work together', () => {
+			const state = createWidgetState({
+				screenshot: true,
+				aiAssist: true,
+				position: 'top-left',
+			});
+			flushSync(() =>
+				state.setConfig({
+					screenshot: false,
+					elementSelector: true,
+					aiAssist: false,
+					requireEmail: true,
+					position: 'bottom-right',
+				}),
+			);
+			// Overridden
+			expect(state.config.screenshot).toBe(true);
+			expect(state.config.aiAssist).toBe(true);
+			expect(state.config.position).toBe('top-left');
+			expect(state.position).toBe('top-left');
+			// Falls through to server config
+			expect(state.config.elementSelector).toBe(true);
+			expect(state.config.requireEmail).toBe(true);
+		});
+
+		it('undefined props fall through to server config', () => {
+			const state = createWidgetState({ screenshot: true });
+			flushSync(() =>
+				state.setConfig({
+					screenshot: false,
+					elementSelector: true,
+					aiAssist: true,
+					requireEmail: true,
+					position: 'top-right',
+				}),
+			);
+			// Only screenshot is overridden
+			expect(state.config.screenshot).toBe(true);
+			// Rest come from server config
+			expect(state.config.elementSelector).toBe(true);
+			expect(state.config.aiAssist).toBe(true);
+			expect(state.config.requireEmail).toBe(true);
+			expect(state.config.position).toBe('top-right');
+		});
+	});
 });

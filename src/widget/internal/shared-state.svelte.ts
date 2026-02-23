@@ -65,6 +65,10 @@ export interface WidgetState {
 
 export interface WidgetStateOptions {
 	position?: Position;
+	screenshot?: boolean;
+	elementSelector?: boolean;
+	aiAssist?: boolean;
+	requireEmail?: boolean;
 }
 
 export function createWidgetState(options: WidgetStateOptions = {}): WidgetState {
@@ -84,7 +88,13 @@ export function createWidgetState(options: WidgetStateOptions = {}): WidgetState
 	let aiSuggestion = $state<AIAssistResult | null>(null);
 	let aiError = $state<string | null>(null);
 
-	const position = $derived(options.position ?? config.position);
+	const effectiveConfig = $derived<WidgetConfig>({
+		screenshot: options.screenshot ?? config.screenshot,
+		elementSelector: options.elementSelector ?? config.elementSelector,
+		aiAssist: options.aiAssist ?? config.aiAssist,
+		requireEmail: options.requireEmail ?? config.requireEmail,
+		position: options.position ?? config.position,
+	});
 
 	function revokeScreenshotUrl(): void {
 		if (screenshotUrl) {
@@ -110,8 +120,8 @@ export function createWidgetState(options: WidgetStateOptions = {}): WidgetState
 		get view() { return view; },
 		get isOpen() { return view !== 'idle'; },
 
-		get config() { return config; },
-		get position() { return position; },
+		get config() { return effectiveConfig; },
+		get position() { return effectiveConfig.position; },
 
 		get type() { return type; },
 		set type(v: TaskType) { type = v; },
